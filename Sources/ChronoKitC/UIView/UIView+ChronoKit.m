@@ -1,4 +1,4 @@
-#import "include/UIView+ChronoKit.h"
+#import "UIView+ChronoKit.h"
 
 @implementation UIView (ChronoKit)
 - (UIViewController *)parentViewController {

@@ -10,6 +10,7 @@
         
         AWESettingItemModel *chronoKitItemModel = [[%c(AWESettingItemModel) alloc] initWithIdentifier:@"chronokit_settings"];
         [chronoKitItemModel setTitle:@"ChronoKit Settings"];
+        [chronoKitItemModel setIconImage:[UIImage systemImageNamed:@"gear"]];
         [chronoKitItemModel setType:1001];
 
         [chronoKitCellPlugin setItemModel:chronoKitItemModel];
@@ -43,6 +44,8 @@ static UIViewController* topMostController();
     }
 }
 
+%end
+
 // Helper function to get the top-most view controller.
 static UIViewController* topMostController() {
     // Modern, scene-aware way to get the key window.
@@ -60,5 +63,3 @@ static UIViewController* topMostController() {
     }
     return topController;
 }
-
-%end
