@@ -1,0 +1,4 @@
+[submodule "reference/DouX"]
+	path = reference/DouX
+	url = https://github.com/kunihir0/DouX
+	branch = dev
