@@ -1,6 +1,6 @@
 Package: com.kunihir0.chronokit
 Name: ChronoKit
-Version: 0.0.1
+Version: 0.0.2
 Architecture: iphoneos-arm64
 Description: An awesome Orion tweak!
 Maintainer: kunihir0

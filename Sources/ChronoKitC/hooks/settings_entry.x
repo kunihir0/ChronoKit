@@ -1,6 +1,9 @@
 #import <Orion/Orion.h>
 #import <ChronoKit-TikTok.h>
-#import <ChronoKit-Swift.h>
+#import "ChronoKit-Swift.h"
+#import <os/log.h>
+
+extern os_log_t ck_log;
 
 %hook AWESettingsNormalSectionViewModel
 - (void)viewDidLoad {
@@ -35,7 +38,7 @@ static UIViewController* topMostController();
             [presentingVC.navigationController pushViewController:swiftVC animated:YES];
         } else {
             // Fallback just in case
-            NSLog(@"ChronoKit Error: Could not find a navigation controller to push from. Using modal fallback.");
+            os_log_error(ck_log, "Could not find a navigation controller to push from. Using modal fallback.");
         UIViewController *topController = topMostController();
         [ChronoKitUIManager presentSettingsFrom:topController];
         }
