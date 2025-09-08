@@ -1,1 +1,1 @@
-#import "Sources/ChronoKitC/include/ChronoKit-TikTok.h"
+#import "ChronoKit-TikTok.h"

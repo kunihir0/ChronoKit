@@ -1,8 +1,8 @@
 Package: com.kunihir0.chronokit
 Name: ChronoKit
-Version: 0.0.2
+Version: 0.0.3
 Architecture: iphoneos-arm64
-Description: An awesome Orion tweak!
+Description: TikTok Enhancements to improve user experience!
 Maintainer: kunihir0
 Author: kunihir0
 Section: Tweaks
