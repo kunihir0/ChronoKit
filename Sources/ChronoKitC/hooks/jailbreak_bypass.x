@@ -1,6 +1,9 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 
+// Not working Tiktok(ver.41.40) has other methods to check jailbreak
+// But this is a good start for other apps
+
 // Thanks Ahmed Bafkir (https://twitter.com/Peaceful_0)
 // https://pastecode.io/s/jsc6k17f
 NSArray *jailbreakPaths = @[

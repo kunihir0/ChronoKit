@@ -1,9 +1,11 @@
 Package: com.kunihir0.chronokit
 Name: ChronoKit
-Version: 0.0.3
+Version: 0.0.4
 Architecture: iphoneos-arm64
 Description: TikTok Enhancements to improve user experience!
 Maintainer: kunihir0
 Author: kunihir0
 Section: Tweaks
-Depends: ${ORION}, firmware (>= 12.2)
+Depends: ${ORION}, firmware (>= 15.4)
+Conflicts: com.kunihir0.doux,cc.igerman.tiktokusregion,com.haoict.tiktokgod,
+  com.objc.TikTok

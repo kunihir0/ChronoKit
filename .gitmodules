@@ -2,3 +2,12 @@
 	path = reference/DouX
 	url = https://github.com/kunihir0/DouX
 	branch = dev
+[submodule "reference/tiktokusregion"]
+	path = reference/tiktokusregion
+	url = https://github.com/iGerman00/tiktokusregion.git
+[submodule "reference/tiktok_god"]
+	path = reference/tiktok_god
+	url = https://github.com/haoict/tiktok-god.git
+[submodule "reference/tikokbytuxi"]
+	path = reference/tikokbytuxi
+	url = https://github.com/tuxi/TikTok-Tweaks.git

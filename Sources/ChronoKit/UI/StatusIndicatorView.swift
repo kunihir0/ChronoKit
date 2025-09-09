@@ -11,11 +11,6 @@ public class StatusIndicatorView: UIView {
     public var status: Status = .pending {
         didSet {
             updateColor()
-            if status == .active {
-                startPulsing()
-            } else {
-                stopPulsing()
-            }
         }
     }
 
@@ -43,10 +38,13 @@ public class StatusIndicatorView: UIView {
         switch status {
         case .active:
             dotLayer.backgroundColor = UIColor.green.cgColor
+            startPulsing()
         case .inactive:
             dotLayer.backgroundColor = UIColor.red.cgColor
+            stopPulsing()
         case .pending:
             dotLayer.backgroundColor = UIColor.yellow.cgColor
+            stopPulsing()
         }
     }
 

@@ -7,13 +7,29 @@ public class BypassStatusManager: NSObject {
 
     private override init() {}
 
-    @objc public func getBypassStatus(completion: @escaping (Int) -> Void) {
+    @objc public func getBypassStatus() -> Int {
         // In a real implementation, we would perform checks here to determine the
         // status of the jailbreak bypass. For now, we'll just return a pending status.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            // Simulate a check and return a status.
-            // For now, we will return .active (0) to demonstrate the UI.
-            completion(0) // 0 for active, 1 for inactive, 2 for pending
+        return 0 // 0 for active, 1 for inactive, 2 for pending
+    }
+
+    @objc public func getSSLBypassStatus() -> Int {
+        let isEnabled = UserDefaults.standard.bool(forKey: "ssl_bypass_enabled")
+        return isEnabled ? 0 : 1 // 0 for active, 1 for inactive
+    }
+
+    @objc public func getAppVersionStatus() -> Int {
+        guard let currentVersionString = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String else {
+            return 1 // Return inactive/unsupported if version can't be determined
+        }
+
+        let supportedVersionString = "41.4.0"
+
+        // Using numeric comparison to correctly handle version strings
+        if currentVersionString.compare(supportedVersionString, options: .numeric) != .orderedDescending {
+            return 0 // active/supported (current <= supported)
+        } else {
+            return 1 // inactive/unsupported (current > supported)
         }
     }
 }

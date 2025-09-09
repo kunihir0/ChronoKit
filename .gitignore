@@ -10,5 +10,11 @@ xcuserdata/
 packages/
 .DS_Store
 
-frida_scripts
+.vscode
+.idea
+
 plans
+frida_scripts
+lldb_scripts
+docs
+findings_summary
