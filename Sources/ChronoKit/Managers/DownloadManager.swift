@@ -87,7 +87,11 @@ extension DownloadManager: URLSessionDownloadDelegate {
             try fileManager.moveItem(at: location, to: destinationURL)
             metadata.primaryLocalFilePath = destinationURL.path
             os_log("Successfully saved file to: %@", log: ck_log, type: .default, destinationURL.path)
-            MediaVaultService.shared.saveMetadata(metadata)
+            do {
+                try VaultDatabaseService.shared.saveMetadata(metadata: metadata)
+            } catch {
+                os_log("Error saving metadata to database: %@", log: ck_log, type: .error, error.localizedDescription)
+            }
             
             DispatchQueue.main.async {
                 HapticFeedbackManager.shared.playSuccess()

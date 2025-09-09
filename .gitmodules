@@ -11,3 +11,6 @@
 [submodule "reference/tikokbytuxi"]
 	path = reference/tikokbytuxi
 	url = https://github.com/tuxi/TikTok-Tweaks.git
+[submodule "deps/SQLite.swift"]
+	path = deps/SQLite.swift
+	url = https://github.com/stephencelis/SQLite.swift
