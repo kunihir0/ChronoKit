@@ -77,7 +77,7 @@ extern os_log_t ck_log;
     }
     os_log_error(ck_log, "Determined media type: %ld", (long)mediaType);
 
-    ChronoKitMediaMetadata *metadata = [[ChronoKitMediaMetadata alloc] initWithItemID:itemID authorName:author.nickname authorID:author.userID creationDate:creationDate caption:caption mediaType:mediaType primaryLocalFilePath:nil];
+    ChronoKitMediaMetadata *metadata = [[ChronoKitMediaMetadata alloc] initWithItemID:itemID authorName:author.nickname authorID:author.userID creationDate:creationDate caption:caption mediaType:mediaType primaryLocalFilePath:nil isFavorite:false tags:@[] width:0 height:0 duration:0 fileSize:0];
 
     if (mediaType == ChronoKitMediaTypeVideo) {
         os_log_error(ck_log, "Processing as video.");
@@ -215,9 +215,7 @@ extern os_log_t ck_log;
     } else {
         mediaType = ChronoKitMediaTypeVideo;
     }
-    os_log_error(ck_log, "Determined media type (AWEAwemeDetailTableViewCell): %ld", (long)mediaType);
-
-    ChronoKitMediaMetadata *metadata = [[ChronoKitMediaMetadata alloc] initWithItemID:itemID authorName:author.nickname authorID:author.userID creationDate:creationDate caption:caption mediaType:mediaType primaryLocalFilePath:nil];
+    ChronoKitMediaMetadata *metadata = [[ChronoKitMediaMetadata alloc] initWithItemID:itemID authorName:author.nickname authorID:author.userID creationDate:creationDate caption:caption mediaType:mediaType primaryLocalFilePath:nil isFavorite:false tags:@[] width:0 height:0 duration:0 fileSize:0];
 
     if (mediaType == ChronoKitMediaTypeVideo) {
         os_log_error(ck_log, "Processing as video (AWEAwemeDetailTableViewCell).");

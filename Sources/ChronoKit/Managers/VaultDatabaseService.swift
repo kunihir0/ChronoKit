@@ -15,6 +15,12 @@ public class VaultDatabaseService {
     private let caption = Expression<String?>("caption")
     private let mediaType = Expression<Int>("mediaType")
     private let primaryLocalFilePath = Expression<String?>("primaryLocalFilePath")
+    private let isFavorite = Expression<Bool>("isFavorite")
+    private let tags = Expression<String>("tags")
+    private let width = Expression<Int>("width")
+    private let height = Expression<Int>("height")
+    private let duration = Expression<TimeInterval>("duration")
+    private let fileSize = Expression<Int64>("fileSize")
 
 
     private init() {
@@ -46,11 +52,18 @@ public class VaultDatabaseService {
             t.column(caption)
             t.column(mediaType)
             t.column(primaryLocalFilePath)
+            t.column(isFavorite, defaultValue: false)
+            t.column(tags, defaultValue: "")
+            t.column(width, defaultValue: 0)
+            t.column(height, defaultValue: 0)
+            t.column(duration, defaultValue: 0)
+            t.column(fileSize, defaultValue: 0)
         })
     }
 
     public func saveMetadata(metadata: MediaMetadata) throws {
         guard let db = db else { return }
+        let tagsString = metadata.tags.joined(separator: ",")
         let insert = mediaMetadata.insert(or: .replace,
             itemID <- metadata.itemID,
             authorName <- metadata.authorName,
@@ -58,7 +71,13 @@ public class VaultDatabaseService {
             creationDate <- metadata.creationDate,
             caption <- metadata.caption,
             mediaType <- metadata.mediaType.rawValue,
-            primaryLocalFilePath <- metadata.primaryLocalFilePath
+            primaryLocalFilePath <- metadata.primaryLocalFilePath,
+            isFavorite <- metadata.isFavorite,
+            tags <- tagsString,
+            width <- metadata.width,
+            height <- metadata.height,
+            duration <- metadata.duration,
+            fileSize <- metadata.fileSize
         )
         try db.run(insert)
     }
@@ -67,6 +86,7 @@ public class VaultDatabaseService {
         guard let db = db else { return [] }
         var allMetadata: [MediaMetadata] = []
         for row in try db.prepare(mediaMetadata) {
+            let tagsArray = row[tags].split(separator: ",").map(String.init)
             let metadata = MediaMetadata(
                 itemID: row[itemID],
                 authorName: row[authorName],
@@ -74,7 +94,13 @@ public class VaultDatabaseService {
                 creationDate: row[creationDate],
                 caption: row[caption],
                 mediaType: MediaType(rawValue: row[mediaType]) ?? .video,
-                primaryLocalFilePath: row[primaryLocalFilePath]
+                primaryLocalFilePath: row[primaryLocalFilePath],
+                isFavorite: row[isFavorite],
+                tags: tagsArray,
+                width: row[width],
+                height: row[height],
+                duration: row[duration],
+                fileSize: row[fileSize]
             )
             allMetadata.append(metadata)
         }
