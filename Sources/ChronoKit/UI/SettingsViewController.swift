@@ -29,7 +29,7 @@ public class SettingsViewController: UIViewController, UITableViewDataSource, UI
     }
 
     public func numberOfSections(in tableView: UITableView) -> Int {
-        return 4
+        return 5
     }
 
 
@@ -42,6 +42,9 @@ public class SettingsViewController: UIViewController, UITableViewDataSource, UI
         }
         if section == 3 { // Developer section
             return 1
+        }
+        if section == 4 { // About section
+            return 3
         }
         return 1
     }
@@ -57,6 +60,8 @@ public class SettingsViewController: UIViewController, UITableViewDataSource, UI
             return "Downloads"
         case 3:
             return "Developer"
+        case 4:
+            return "About"
         default:
             return nil
         }
@@ -118,11 +123,53 @@ public class SettingsViewController: UIViewController, UITableViewDataSource, UI
             switchView.setOn(UserDefaults.standard.bool(forKey: "ssl_bypass_enabled"), animated: true)
             switchView.addTarget(self, action: #selector(sslBypassToggled(_:)), for: .valueChanged)
             cell.accessoryView = switchView
+        case 4:
+            if indexPath.row == 0 {
+                cell.textLabel?.text = "Project Repo"
+                cell.accessoryType = .disclosureIndicator
+            } else if indexPath.row == 1 {
+                cell.textLabel?.text = "License"
+                cell.detailTextLabel?.text = "Apache License 2.0"
+                cell.selectionStyle = .default
+            } else if indexPath.row == 2 {
+                cell.textLabel?.text = "Credits"
+                let button = UIButton(type: .system)
+                button.setTitle("View Credits", for: .normal)
+                
+                let creditsMenu = UIMenu(title: "Credits", children: [
+                    UIAction(title: "DouX", handler: { _ in self.openURL(string: "https://github.com/kunihir0/DouX") }),
+                    UIAction(title: "tiktokusregion", handler: { _ in self.openURL(string: "https://github.com/iGerman00/tiktokusregion.git") }),
+                    UIAction(title: "tiktok-god", handler: { _ in self.openURL(string: "https://github.com/haoict/tiktok-god.git") }),
+                    UIAction(title: "TikTok-Tweaks", handler: { _ in self.openURL(string: "https://github.com/tuxi/TikTok-Tweaks.git") })
+                ])
+                
+                button.menu = creditsMenu
+                button.showsMenuAsPrimaryAction = true
+                button.sizeToFit()
+                cell.accessoryView = button
+            }
         default:
             break
         }
 
         return cell
+    }
+
+    public func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        if indexPath.section == 4 {
+            if indexPath.row == 0 {
+                openURL(string: "https://github.com/kunihir0/ChronoKit")
+            } else if indexPath.row == 1 {
+                openURL(string: "https://www.apache.org/licenses/LICENSE-2.0")
+            }
+        }
+    }
+
+    private func openURL(string: String) {
+        if let url = URL(string: string) {
+            UIApplication.shared.open(url)
+        }
     }
 
 
