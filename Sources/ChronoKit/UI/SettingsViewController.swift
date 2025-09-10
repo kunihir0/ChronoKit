@@ -1,4 +1,5 @@
 import UIKit
+import os.log
 
 @objc(ChronoKitSettingsViewController)
 public class SettingsViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
@@ -41,7 +42,7 @@ public class SettingsViewController: UIViewController, UITableViewDataSource, UI
             return 2
         }
         if section == 3 { // Developer section
-            return 1
+            return 6
         }
         if section == 4 { // About section
             return 3
@@ -116,13 +117,40 @@ public class SettingsViewController: UIViewController, UITableViewDataSource, UI
             switchView.addTarget(self, action: #selector(highQualityToggled(_:)), for: .valueChanged)
             cell.accessoryView = switchView
         case 3:
-            cell.textLabel?.text = "SSL Bypass"
-            cell.detailTextLabel?.text = "Enable SSL Pinning Bypass"
+            if indexPath.row == 0 {
+                cell.textLabel?.text = "SSL Bypass"
+                cell.detailTextLabel?.text = "Enable SSL Pinning Bypass"
 
-            let switchView = UISwitch(frame: .zero)
-            switchView.setOn(UserDefaults.standard.bool(forKey: "ssl_bypass_enabled"), animated: true)
-            switchView.addTarget(self, action: #selector(sslBypassToggled(_:)), for: .valueChanged)
-            cell.accessoryView = switchView
+                let switchView = UISwitch(frame: .zero)
+                switchView.setOn(UserDefaults.standard.bool(forKey: "ssl_bypass_enabled"), animated: true)
+                switchView.addTarget(self, action: #selector(sslBypassToggled(_:)), for: .valueChanged)
+                cell.accessoryView = switchView
+            } else if indexPath.row == 1 {
+                cell.textLabel?.text = "Media Vault"
+                cell.accessoryType = .disclosureIndicator
+            } else if indexPath.row == 2 {
+                cell.textLabel?.text = "Media Vault"
+                cell.accessoryType = .disclosureIndicator
+            } else if indexPath.row == 3 {
+                cell.textLabel?.text = "Debug Download All URLs"
+                cell.detailTextLabel?.text = "Download all URLs for a photo album for debugging"
+
+                let switchView = UISwitch(frame: .zero)
+                switchView.setOn(UserDefaults.standard.bool(forKey: "debug_download_all_urls"), animated: true)
+                switchView.addTarget(self, action: #selector(debugDownloadAllURLsToggled(_:)), for: .valueChanged)
+                cell.accessoryView = switchView
+            } else if indexPath.row == 4 {
+                cell.textLabel?.text = "Log All Headers"
+                cell.detailTextLabel?.text = "Log all HTTP headers for debugging"
+
+                let switchView = UISwitch(frame: .zero)
+                switchView.setOn(UserDefaults.standard.bool(forKey: "log_all_headers"), animated: true)
+                switchView.addTarget(self, action: #selector(logAllHeadersToggled(_:)), for: .valueChanged)
+                cell.accessoryView = switchView
+            } else if indexPath.row == 5 {
+                cell.textLabel?.text = "View Debug Log"
+                cell.accessoryType = .disclosureIndicator
+            }
         case 4:
             if indexPath.row == 0 {
                 cell.textLabel?.text = "Project Repo"
@@ -157,7 +185,22 @@ public class SettingsViewController: UIViewController, UITableViewDataSource, UI
 
     public func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        if indexPath.section == 4 {
+        if indexPath.section == 3 {
+            if indexPath.row == 1 {
+                let vaultVC = VaultCreatorsViewController()
+                self.navigationController?.pushViewController(vaultVC, animated: true)
+            } else if indexPath.row == 2 {
+                debugLastImage()
+            } else if indexPath.row == 5 {
+                let logContent = FileLogger.shared.readLog()
+                let logVC = UIViewController()
+                let textView = UITextView(frame: logVC.view.bounds)
+                textView.text = logContent
+                textView.isEditable = false
+                logVC.view.addSubview(textView)
+                self.navigationController?.pushViewController(logVC, animated: true)
+            }
+        } else if indexPath.section == 4 {
             if indexPath.row == 0 {
                 openURL(string: "https://github.com/kunihir0/ChronoKit")
             } else if indexPath.row == 1 {
@@ -191,6 +234,14 @@ public class SettingsViewController: UIViewController, UITableViewDataSource, UI
         showRestartAlert()
     }
 
+    @objc func debugDownloadAllURLsToggled(_ sender: UISwitch) {
+        UserDefaults.standard.set(sender.isOn, forKey: "debug_download_all_urls")
+    }
+
+    @objc func logAllHeadersToggled(_ sender: UISwitch) {
+        UserDefaults.standard.set(sender.isOn, forKey: "log_all_headers")
+    }
+
     private func showRestartAlert() {
         let alert = UIAlertController(title: "Restart Required", message: "Please restart the app for the changes to take effect.", preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Later", style: .cancel, handler: nil))
@@ -199,5 +250,40 @@ public class SettingsViewController: UIViewController, UITableViewDataSource, UI
             exit(0)
         }))
         present(alert, animated: true)
+    }
+
+    @objc func debugLastImage() {
+        let fileManager = FileManager.default
+        let documentsDirectory = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let debugURL = documentsDirectory.appendingPathComponent("debug")
+        let fileURL = debugURL.appendingPathComponent("last_downloaded_image.heic")
+
+        guard fileManager.fileExists(atPath: fileURL.path) else {
+            os_log("Debug file not found at %@", log: ck_log, type: .error, fileURL.path)
+            return
+        }
+
+        do {
+            let data = try Data(contentsOf: fileURL)
+            os_log("Debug file size: %d bytes", log: ck_log, type: .default, data.count)
+
+            let image = UIImage(data: data)
+            if image != nil {
+                os_log("UIImage(data:) successfully created a UIImage.", log: ck_log, type: .default)
+            } else {
+                os_log("UIImage(data:) returned nil.", log: ck_log, type: .error)
+            }
+
+            let firstBytes = data.prefix(16).map { String(format: "%02hhx", $0) }.joined()
+            os_log("First 16 bytes of debug file: %@", log: ck_log, type: .default, firstBytes)
+
+            // Try to save as JPEG
+            let jpegURL = debugURL.appendingPathComponent("last_downloaded_image.jpeg")
+            try data.write(to: jpegURL)
+            os_log("Saved a copy of the debug file as JPEG to %@", log: ck_log, type: .default, jpegURL.path)
+
+        } catch {
+            os_log("Error reading or saving debug file: %@", log: ck_log, type: .error, error.localizedDescription)
+        }
     }
 }

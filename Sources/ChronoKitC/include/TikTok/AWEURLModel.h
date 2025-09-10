@@ -6,4 +6,5 @@
 - (NSURL *)bestURLtoDownload;
 - (NSString *)bestURLtoDownloadFormat;
 - (NSURL *)bestImageURLtoDownload;
+- (NSURL *)bestVideoURLtoDownload;
 @end

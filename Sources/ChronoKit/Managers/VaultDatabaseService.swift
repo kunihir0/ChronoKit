@@ -86,21 +86,21 @@ public class VaultDatabaseService {
         guard let db = db else { return [] }
         var allMetadata: [MediaMetadata] = []
         for row in try db.prepare(mediaMetadata) {
-            let tagsArray = row[tags].split(separator: ",").map(String.init)
+            let tagsArray = row[self.tags].split(separator: ",").map(String.init)
             let metadata = MediaMetadata(
-                itemID: row[itemID],
-                authorName: row[authorName],
-                authorID: row[authorID],
-                creationDate: row[creationDate],
-                caption: row[caption],
-                mediaType: MediaType(rawValue: row[mediaType]) ?? .video,
-                primaryLocalFilePath: row[primaryLocalFilePath],
-                isFavorite: row[isFavorite],
+                itemID: row[self.itemID],
+                authorName: row[self.authorName],
+                authorID: row[self.authorID],
+                creationDate: row[self.creationDate],
+                caption: row[self.caption],
+                mediaType: MediaType(rawValue: row[self.mediaType]) ?? .video,
+                primaryLocalFilePath: row[self.primaryLocalFilePath],
+                isFavorite: row[self.isFavorite],
                 tags: tagsArray,
-                width: row[width],
-                height: row[height],
-                duration: row[duration],
-                fileSize: row[fileSize]
+                width: row[self.width],
+                height: row[self.height],
+                duration: row[self.duration],
+                fileSize: row[self.fileSize]
             )
             allMetadata.append(metadata)
         }
@@ -111,5 +111,55 @@ public class VaultDatabaseService {
         guard let db = db else { return }
         let item = mediaMetadata.filter(itemID == metadata.itemID)
         try db.run(item.delete())
+    }
+
+    public func fetchCreators() throws -> [(authorID: String, authorName: String)] {
+        guard let db = db else { return [] }
+        var creators: [(authorID: String, authorName: String)] = []
+        let query = mediaMetadata.select(authorID, authorName).group(authorID)
+        for row in try db.prepare(query) {
+            creators.append((authorID: row[self.authorID], authorName: row[self.authorName]))
+        }
+        return creators
+    }
+
+    public func getMediaCount(for authorID: String) throws -> Int {
+        guard let db = db else { return 0 }
+        let query = mediaMetadata.filter(self.authorID == authorID)
+        return try db.scalar(query.count)
+    }
+
+    public func getTotalMediaCount() throws -> Int {
+        guard let db = db else { return 0 }
+        return try db.scalar(mediaMetadata.count)
+    }
+
+    public func loadMedia(for authorID: String?) throws -> [MediaMetadata] {
+        guard let db = db else { return [] }
+        var allMetadata: [MediaMetadata] = []
+        var query = mediaMetadata
+        if let authorID = authorID {
+            query = query.filter(self.authorID == authorID)
+        }
+        for row in try db.prepare(query) {
+            let tagsArray = row[self.tags].split(separator: ",").map(String.init)
+            let metadata = MediaMetadata(
+                itemID: row[self.itemID],
+                authorName: row[self.authorName],
+                authorID: row[self.authorID],
+                creationDate: row[self.creationDate],
+                caption: row[self.caption],
+                mediaType: MediaType(rawValue: row[self.mediaType]) ?? .video,
+                primaryLocalFilePath: row[self.primaryLocalFilePath],
+                isFavorite: row[self.isFavorite],
+                tags: tagsArray,
+                width: row[self.width],
+                height: row[self.height],
+                duration: row[self.duration],
+                fileSize: row[self.fileSize]
+            )
+            allMetadata.append(metadata)
+        }
+        return allMetadata
     }
 }

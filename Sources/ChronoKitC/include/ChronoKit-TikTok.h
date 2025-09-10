@@ -12,3 +12,11 @@
 #import "TikTok/AWEURLModel.h"
 #import "TikTok/AWEPhotoAlbumPhoto.h"
 #import "TikTok/AWEAwemeDetailTableViewCell.h"
+
+@interface AWEURLModel (ChronoKit)
+
+- (void)setChronoKitGoodURLs:(NSArray *)urls;
+- (NSArray *)ChronoKitGoodURLs;
+- (NSArray *)chronoKit_URLListToUse;
+
+@end

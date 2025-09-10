@@ -1,8 +1,8 @@
 import Foundation
 
 @objc(ChronoKitMediaMetadata)
-public class MediaMetadata: NSObject, Codable {
-    @objc public let itemID: String
+public class MediaMetadata: NSObject, Codable, NSCopying {
+    @objc public var itemID: String
     @objc public let authorName: String
     @objc public let authorID: String
     @objc public let creationDate: Date
@@ -32,7 +32,8 @@ public class MediaMetadata: NSObject, Codable {
         self.fileSize = fileSize
     }
 
-    @objc public func copyMetadata() -> MediaMetadata {
-        return MediaMetadata(itemID: self.itemID, authorName: self.authorName, authorID: self.authorID, creationDate: self.creationDate, caption: self.caption, mediaType: self.mediaType, primaryLocalFilePath: self.primaryLocalFilePath, isFavorite: self.isFavorite, tags: self.tags, width: self.width, height: self.height, duration: self.duration, fileSize: self.fileSize)
+    public func copy(with zone: NSZone? = nil) -> Any {
+        let copy = MediaMetadata(itemID: self.itemID, authorName: self.authorName, authorID: self.authorID, creationDate: self.creationDate, caption: self.caption, mediaType: self.mediaType, primaryLocalFilePath: self.primaryLocalFilePath, isFavorite: self.isFavorite, tags: self.tags, width: self.width, height: self.height, duration: self.duration, fileSize: self.fileSize)
+        return copy
     }
 }

@@ -1,4 +1,3 @@
-
 import Foundation
 import os.log
 
@@ -8,8 +7,8 @@ public class DownloadManager: NSObject {
     @objc public static let shared = DownloadManager()
 
     private var urlSession: URLSession!
-    private var activeDownloads: [Int: (MediaMetadata, String)] = [:]
-    private var downloadQueue: [(url: URL, metadata: MediaMetadata, format: String)] = []
+    private var activeDownloads: [Int: MediaMetadata] = [:]
+    private var downloadQueue: [(url: URL, metadata: MediaMetadata)] = []
     private var isDownloading = false
     private var totalDownloadsInBatch = 0
     private var completedDownloadsCount = 0
@@ -20,22 +19,24 @@ public class DownloadManager: NSObject {
         self.urlSession = URLSession(configuration: configuration, delegate: self, delegateQueue: OperationQueue.main)
     }
 
-    @objc public func downloadFile(url: URL, metadata: MediaMetadata, format: String) {
-        os_log("Queuing file for download: %@ with format %@", log: ck_log, type: .default, url.absoluteString, format)
-        downloadQueue.append((url, metadata, format))
+    @objc(downloadFileWithUrl:metadata:)
+    public func downloadFile(url: URL, metadata: MediaMetadata) {
+        os_log("Queuing file for download: %@", log: ck_log, type: .default, url.absoluteString)
+        downloadQueue.append((url, metadata))
         totalDownloadsInBatch += 1
         processQueue()
     }
 
-    @objc public func downloadFiles(urls: [URL], metadata: MediaMetadata, formats: [String]) {
-        guard urls.count == formats.count else {
-            os_log("Error: The number of URLs and formats provided do not match.", log: ck_log, type: .error)
-            return
-        }
-        os_log("Queuing %d files for download.", log: ck_log, type: .default, urls.count)
+    @objc(downloadAllURLsWithUrls:metadata:)
+    public func downloadAllURLs(urls: [URL], metadata: MediaMetadata) {
+        os_log("Queuing %d files for debug download.", log: ck_log, type: .default, urls.count)
         totalDownloadsInBatch += urls.count
         for i in 0..<urls.count {
-            downloadQueue.append((urls[i], metadata.copyMetadata(), formats[i]))
+            let url = urls[i]
+            let uniqueMetadata = metadata.copy() as! MediaMetadata
+            let urlHash = url.absoluteString.hash
+            uniqueMetadata.itemID = "\(uniqueMetadata.itemID)-\(i)-\(urlHash)" // Add index and URL hash to itemID
+            downloadQueue.append((url, uniqueMetadata))
         }
         processQueue()
     }
@@ -46,11 +47,11 @@ public class DownloadManager: NSObject {
         }
 
         isDownloading = true
-        let (url, metadata, format) = downloadQueue.removeFirst()
+        let (url, metadata) = downloadQueue.removeFirst()
 
-        os_log("Starting download from queue: %@ with format %@", log: ck_log, type: .default, url.absoluteString, format)
+        os_log("Starting download from queue: %@", log: ck_log, type: .default, url.absoluteString)
         let task = self.urlSession.downloadTask(with: url)
-        self.activeDownloads[task.taskIdentifier] = (metadata, format)
+        self.activeDownloads[task.taskIdentifier] = metadata
         
         DispatchQueue.main.async {
             DownloadUIManager.shared.showProgressView()
@@ -60,12 +61,36 @@ public class DownloadManager: NSObject {
         task.resume()
         os_log("Started download task with identifier: %d", log: ck_log, type: .default, task.taskIdentifier)
     }
+    
+    private func fileExtension(for mimeType: String) -> String {
+        switch mimeType {
+        case "image/jpeg":
+            return "jpeg"
+        case "image/png":
+            return "png"
+        case "image/webp":
+            return "webp"
+        case "image/heic":
+            return "heic"
+        case "image/vvic":
+            return "vvic"
+        case "video/mp4":
+            return "mp4"
+        default:
+            // Fallback to jpeg for unknown image types, or mp4 for others
+            if mimeType.hasPrefix("image/") {
+                return "jpeg"
+            } else {
+                return "mp4"
+            }
+        }
+    }
 }
 
 extension DownloadManager: URLSessionDownloadDelegate {
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         os_log("[VERBOSE] didFinishDownloadingTo: total=%d, completed=%d, queue=%d, active=%d", log: ck_log, type: .default, self.totalDownloadsInBatch, self.completedDownloadsCount, self.downloadQueue.count, self.activeDownloads.count)
-        guard let (metadata, format) = self.activeDownloads.removeValue(forKey: downloadTask.taskIdentifier) else {
+        guard let metadata = self.activeDownloads.removeValue(forKey: downloadTask.taskIdentifier) else {
             os_log("Error: Could not find metadata for download task %d", log: ck_log, type: .error, downloadTask.taskIdentifier)
             isDownloading = false
             processQueue()
@@ -74,11 +99,25 @@ extension DownloadManager: URLSessionDownloadDelegate {
 
         completedDownloadsCount += 1
 
+        var fileExtension = "tmp"
+        if let response = downloadTask.response as? HTTPURLResponse {
+            if UserDefaults.standard.bool(forKey: "log_all_headers") {
+                let logMessage = "Headers for URL: \(downloadTask.originalRequest?.url?.absoluteString ?? "N/A")\n\(response.allHeaderFields.description)"
+                FileLogger.shared.log(logMessage)
+            }
+            if let mimeType = response.allHeaderFields["Content-Type"] as? String {
+                fileExtension = self.fileExtension(for: mimeType)
+                os_log("Determined file extension '%@' from MIME type '%@'", log: ck_log, type: .default, fileExtension, mimeType)
+            }
+        } else {
+            os_log("Could not determine MIME type, using temporary extension.", log: ck_log, type: .error)
+        }
+
         let fileManager = FileManager.default
         let vaultURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("ChronoKitVault")
         let creatorURL = vaultURL.appendingPathComponent(metadata.authorID)
         let mediaTypeURL = creatorURL.appendingPathComponent(metadata.mediaType == .video ? "Videos" : "Photos")
-        let fileName = "\(metadata.itemID)-\(UUID().uuidString).\(format)"
+        let fileName = "\(metadata.itemID)-\(UUID().uuidString).\(fileExtension)"
         let destinationURL = mediaTypeURL.appendingPathComponent(fileName)
         os_log("Moving file to: %@", log: ck_log, type: .default, destinationURL.absoluteString)
 
@@ -91,6 +130,18 @@ extension DownloadManager: URLSessionDownloadDelegate {
                 try VaultDatabaseService.shared.saveMetadata(metadata: metadata)
             } catch {
                 os_log("Error saving metadata to database: %@", log: ck_log, type: .error, error.localizedDescription)
+            }
+
+            // Debug: Save a copy of the downloaded image
+            if metadata.mediaType != .video {
+                let debugURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("debug")
+                try? fileManager.createDirectory(at: debugURL, withIntermediateDirectories: true, attributes: nil)
+                let debugFileURL = debugURL.appendingPathComponent("last_downloaded_image.\(fileExtension)")
+                if fileManager.fileExists(atPath: debugFileURL.path) {
+                    try? fileManager.removeItem(at: debugFileURL)
+                }
+                try? fileManager.copyItem(at: destinationURL, to: debugFileURL)
+                os_log("Saved a debug copy of the image to %@", log: ck_log, type: .default, debugFileURL.path)
             }
             
             DispatchQueue.main.async {
@@ -148,5 +199,61 @@ extension DownloadManager: URLSessionDownloadDelegate {
         
         isDownloading = false
         processQueue()
+    }
+
+    @objc(downloadContentWithItemID:authorName:authorID:creationDate:caption:mediaType:urlLists:)
+    public func downloadContent(itemID: String, authorName: String, authorID: String, creationDate: Date, caption: String?, mediaType: MediaType, urlLists: [[String]]) {
+        os_log("Starting download for itemID: %@", log: ck_log, type: .default, itemID)
+
+        if mediaType == .video {
+            guard let originURLList = urlLists.first else {
+                os_log("Video URL list is empty", log: ck_log, type: .error)
+                DispatchQueue.main.async { DownloadUIManager.shared.hideProgressView() }
+                return
+            }
+            
+            let highQuality = UserDefaults.standard.bool(forKey: "high_quality")
+            if let videoURL = URLFilter.shared.bestVideoURL(from: originURLList, highQuality: highQuality) {
+                let metadata = MediaMetadata(itemID: itemID, authorName: authorName, authorID: authorID, creationDate: creationDate, caption: caption, mediaType: mediaType, primaryLocalFilePath: nil)
+                os_log("Initiating video download.", log: ck_log, type: .default)
+                self.downloadFile(url: videoURL, metadata: metadata)
+            } else {
+                DispatchQueue.main.async { DownloadUIManager.shared.hideProgressView() }
+            }
+        } else if mediaType == .photoAlbum {
+            os_log("Found %lu photos in album.", log: ck_log, type: .default, urlLists.count)
+            var didQueueDownload = false
+
+            for (i, originURLList) in urlLists.enumerated() {
+                let uniqueItemID = "\(itemID)-\(i)"
+                let photoMetadata = MediaMetadata(itemID: uniqueItemID, authorName: authorName, authorID: authorID, creationDate: creationDate, caption: caption, mediaType: mediaType, primaryLocalFilePath: nil)
+
+                if UserDefaults.standard.bool(forKey: "debug_download_all_urls") {
+                    let urlsToDownload = originURLList.compactMap { urlString -> URL? in
+                        if urlString.contains("_vvic_") { return nil }
+                        return URL(string: urlString)
+                    }
+                    if !urlsToDownload.isEmpty {
+                        self.downloadAllURLs(urls: urlsToDownload, metadata: photoMetadata)
+                        didQueueDownload = true
+                    }
+                } else {
+                    let urlsToDownload = originURLList.compactMap { urlString -> URL? in
+                        if urlString.contains("_vvic_") { return nil }
+                        return URL(string: urlString)
+                    }
+                    if let photoURL = URLFilter.shared.bestImageURL(from: urlsToDownload.map { $0.absoluteString }) {
+                        self.downloadFile(url: photoURL, metadata: photoMetadata)
+                        didQueueDownload = true
+                    } else {
+                        os_log("[VERBOSE] photoURL is nil for photo at index %d", log: ck_log, type: .default, i)
+                    }
+                }
+            }
+
+            if !didQueueDownload {
+                DispatchQueue.main.async { DownloadUIManager.shared.hideProgressView() }
+            }
+        }
     }
 }
