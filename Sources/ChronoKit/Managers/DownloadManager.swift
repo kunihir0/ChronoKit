@@ -242,11 +242,9 @@ extension DownloadManager: URLSessionDownloadDelegate {
                         if urlString.contains("_vvic_") { return nil }
                         return URL(string: urlString)
                     }
-                    if let photoURL = URLFilter.shared.bestImageURL(from: urlsToDownload.map { $0.absoluteString }) {
-                        self.downloadFile(url: photoURL, metadata: photoMetadata)
+                    if !urlsToDownload.isEmpty {
+                        self.downloadAllURLs(urls: urlsToDownload, metadata: photoMetadata)
                         didQueueDownload = true
-                    } else {
-                        os_log("[VERBOSE] photoURL is nil for photo at index %d", log: ck_log, type: .default, i)
                     }
                 }
             }
