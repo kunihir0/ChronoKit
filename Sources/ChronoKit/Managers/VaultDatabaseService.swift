@@ -7,6 +7,9 @@ public class VaultDatabaseService {
     private var db: Connection?
 
     private let mediaMetadata = Table("media_metadata")
+    private let authors = Table("authors")
+    private let tags = Table("tags")
+    private let media_tags = Table("media_tags")
     private let id = Expression<Int64>("id")
     private let itemID = Expression<String>("itemID")
     private let authorName = Expression<String>("authorName")
@@ -16,11 +19,21 @@ public class VaultDatabaseService {
     private let mediaType = Expression<Int>("mediaType")
     private let primaryLocalFilePath = Expression<String?>("primaryLocalFilePath")
     private let isFavorite = Expression<Bool>("isFavorite")
-    private let tags = Expression<String>("tags")
     private let width = Expression<Int>("width")
     private let height = Expression<Int>("height")
     private let duration = Expression<TimeInterval>("duration")
     private let fileSize = Expression<Int64>("fileSize")
+
+    // Authors table columns
+    private let author_id = Expression<String>("author_id")
+    private let author_name = Expression<String>("author_name")
+
+    // Tags table columns
+    private let tag_id = Expression<Int64>("tag_id")
+    private let tag_name = Expression<String>("tag_name")
+
+    // Media_tags table columns
+    private let media_item_id = Expression<Int64>("media_item_id")
 
 
     private init() {
@@ -43,64 +56,102 @@ public class VaultDatabaseService {
 
     private func createMediaMetadataTable() throws {
         guard let db = db else { return }
+
+        try db.run(authors.create(ifNotExists: true) { t in
+            t.column(author_id, primaryKey: true)
+            t.column(author_name)
+        })
+
+        try db.run(tags.create(ifNotExists: true) { t in
+            t.column(tag_id, primaryKey: .autoincrement)
+            t.column(tag_name, unique: true)
+        })
+
+        try db.run(media_tags.create(ifNotExists: true) { t in
+            t.column(media_item_id)
+            t.column(tag_id)
+            t.primaryKey(media_item_id, tag_id)
+            t.foreignKey(media_item_id, references: mediaMetadata, id, delete: .cascade)
+            t.foreignKey(tag_id, references: tags, self.tag_id, delete: .cascade)
+        })
+
         try db.run(mediaMetadata.create(ifNotExists: true) { t in
             t.column(id, primaryKey: .autoincrement)
             t.column(itemID, unique: true)
-            t.column(authorName)
             t.column(authorID)
             t.column(creationDate)
             t.column(caption)
             t.column(mediaType)
             t.column(primaryLocalFilePath)
             t.column(isFavorite, defaultValue: false)
-            t.column(tags, defaultValue: "")
             t.column(width, defaultValue: 0)
             t.column(height, defaultValue: 0)
             t.column(duration, defaultValue: 0)
             t.column(fileSize, defaultValue: 0)
+            t.foreignKey(authorID, references: authors, self.author_id)
         })
     }
 
     public func saveMetadata(metadata: MediaMetadata) throws {
         guard let db = db else { return }
-        let tagsString = metadata.tags.joined(separator: ",")
+
+        // Insert author if they don't exist
+        try db.run(authors.insert(or: .ignore, author_id <- metadata.authorID, author_name <- metadata.authorName))
+
+        let fileManager = FileManager.default
+        let vaultURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("ChronoKitVault")
+        let relativePath = metadata.primaryLocalFilePath?.replacingOccurrences(of: vaultURL.path, with: "")
+
         let insert = mediaMetadata.insert(or: .replace,
             itemID <- metadata.itemID,
-            authorName <- metadata.authorName,
             authorID <- metadata.authorID,
             creationDate <- metadata.creationDate,
             caption <- metadata.caption,
             mediaType <- metadata.mediaType.rawValue,
-            primaryLocalFilePath <- metadata.primaryLocalFilePath,
+            primaryLocalFilePath <- relativePath,
             isFavorite <- metadata.isFavorite,
-            tags <- tagsString,
             width <- metadata.width,
             height <- metadata.height,
             duration <- metadata.duration,
             fileSize <- metadata.fileSize
         )
-        try db.run(insert)
+        let rowid = try db.run(insert)
+
+        // Handle tags
+        for tagName in metadata.tags {
+            let tagId = try db.run(tags.insert(or: .ignore, self.tag_name <- tagName))
+            try db.run(media_tags.insert(or: .ignore, media_item_id <- rowid, self.tag_id <- tagId))
+        }
     }
 
     public func loadMetadata() throws -> [MediaMetadata] {
         guard let db = db else { return [] }
         var allMetadata: [MediaMetadata] = []
-        for row in try db.prepare(mediaMetadata) {
-            let tagsArray = row[self.tags].split(separator: ",").map(String.init)
+        let query = mediaMetadata.join(authors, on: mediaMetadata[authorID] == authors[author_id])
+        for row in try db.prepare(query) {
+            let mediaId = row[mediaMetadata[self.id]]
+            let tagsQuery = media_tags.join(tags, on: media_tags[tag_id] == tags[self.tag_id]).filter(media_tags[media_item_id] == mediaId)
+            let tagsArray = try db.prepare(tagsQuery).map { $0[tags[self.tag_name]] }
+
+            let fileManager = FileManager.default
+            let vaultURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("ChronoKitVault")
+            let relativePath = row[mediaMetadata[self.primaryLocalFilePath]]
+            let fullPath = relativePath != nil ? vaultURL.appendingPathComponent(relativePath!).path : nil
+
             let metadata = MediaMetadata(
-                itemID: row[self.itemID],
-                authorName: row[self.authorName],
-                authorID: row[self.authorID],
-                creationDate: row[self.creationDate],
-                caption: row[self.caption],
-                mediaType: MediaType(rawValue: row[self.mediaType]) ?? .video,
-                primaryLocalFilePath: row[self.primaryLocalFilePath],
-                isFavorite: row[self.isFavorite],
+                itemID: row[mediaMetadata[self.itemID]],
+                authorName: row[authors[self.author_name]],
+                authorID: row[mediaMetadata[self.authorID]],
+                creationDate: row[mediaMetadata[self.creationDate]],
+                caption: row[mediaMetadata[self.caption]],
+                mediaType: MediaType(rawValue: row[mediaMetadata[self.mediaType]]) ?? .video,
+                primaryLocalFilePath: fullPath,
+                isFavorite: row[mediaMetadata[self.isFavorite]],
                 tags: tagsArray,
-                width: row[self.width],
-                height: row[self.height],
-                duration: row[self.duration],
-                fileSize: row[self.fileSize]
+                width: row[mediaMetadata[self.width]],
+                height: row[mediaMetadata[self.height]],
+                duration: row[mediaMetadata[self.duration]],
+                fileSize: row[mediaMetadata[self.fileSize]]
             )
             allMetadata.append(metadata)
         }
@@ -116,9 +167,8 @@ public class VaultDatabaseService {
     public func fetchCreators() throws -> [(authorID: String, authorName: String)] {
         guard let db = db else { return [] }
         var creators: [(authorID: String, authorName: String)] = []
-        let query = mediaMetadata.select(authorID, authorName).group(authorID)
-        for row in try db.prepare(query) {
-            creators.append((authorID: row[self.authorID], authorName: row[self.authorName]))
+        for row in try db.prepare(authors) {
+            creators.append((authorID: row[self.author_id], authorName: row[self.author_name]))
         }
         return creators
     }
@@ -137,26 +187,34 @@ public class VaultDatabaseService {
     public func loadMedia(for authorID: String?) throws -> [MediaMetadata] {
         guard let db = db else { return [] }
         var allMetadata: [MediaMetadata] = []
-        var query = mediaMetadata
+        var query = mediaMetadata.join(authors, on: mediaMetadata[self.authorID] == authors[author_id])
         if let authorID = authorID {
-            query = query.filter(self.authorID == authorID)
+            query = query.filter(mediaMetadata[self.authorID] == authorID)
         }
         for row in try db.prepare(query) {
-            let tagsArray = row[self.tags].split(separator: ",").map(String.init)
+            let mediaId = row[mediaMetadata[self.id]]
+            let tagsQuery = media_tags.join(tags, on: media_tags[tag_id] == tags[self.tag_id]).filter(media_tags[media_item_id] == mediaId)
+            let tagsArray = try db.prepare(tagsQuery).map { $0[tags[self.tag_name]] }
+
+            let fileManager = FileManager.default
+            let vaultURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("ChronoKitVault")
+            let relativePath = row[mediaMetadata[self.primaryLocalFilePath]]
+            let fullPath = relativePath != nil ? vaultURL.appendingPathComponent(relativePath!).path : nil
+
             let metadata = MediaMetadata(
-                itemID: row[self.itemID],
-                authorName: row[self.authorName],
-                authorID: row[self.authorID],
-                creationDate: row[self.creationDate],
-                caption: row[self.caption],
-                mediaType: MediaType(rawValue: row[self.mediaType]) ?? .video,
-                primaryLocalFilePath: row[self.primaryLocalFilePath],
-                isFavorite: row[self.isFavorite],
+                itemID: row[mediaMetadata[self.itemID]],
+                authorName: row[authors[self.author_name]],
+                authorID: row[mediaMetadata[self.authorID]],
+                creationDate: row[mediaMetadata[self.creationDate]],
+                caption: row[mediaMetadata[self.caption]],
+                mediaType: MediaType(rawValue: row[mediaMetadata[self.mediaType]]) ?? .video,
+                primaryLocalFilePath: fullPath,
+                isFavorite: row[mediaMetadata[self.isFavorite]],
                 tags: tagsArray,
-                width: row[self.width],
-                height: row[self.height],
-                duration: row[self.duration],
-                fileSize: row[self.fileSize]
+                width: row[mediaMetadata[self.width]],
+                height: row[mediaMetadata[self.height]],
+                duration: row[mediaMetadata[self.duration]],
+                fileSize: row[mediaMetadata[self.fileSize]]
             )
             allMetadata.append(metadata)
         }
