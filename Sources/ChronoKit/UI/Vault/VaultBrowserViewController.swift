@@ -1,7 +1,7 @@
 import UIKit
 
 @objc(ChronoKitVaultBrowserViewController)
-public class VaultBrowserViewController: UIViewController {
+public class VaultBrowserViewController: UIViewController, UICollectionViewDelegate {
 
     private var creatorID: String?
     private var collectionView: UICollectionView!
@@ -34,6 +34,7 @@ public class VaultBrowserViewController: UIViewController {
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         collectionView.backgroundColor = .systemBackground
         collectionView.register(VaultItemCell.self, forCellWithReuseIdentifier: "VaultItemCell")
+        collectionView.delegate = self
         view.addSubview(collectionView)
     }
 
@@ -79,5 +80,13 @@ public class VaultBrowserViewController: UIViewController {
         snapshot.appendSections([0])
         snapshot.appendItems(media)
         dataSource.apply(snapshot, animatingDifferences: true)
+    }
+
+    // MARK: - UICollectionViewDelegate
+
+    public func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        let pageVC = MediaViewerPageViewController(mediaItems: media, initialIndex: indexPath.item)
+        pageVC.modalPresentationStyle = .fullScreen
+        present(pageVC, animated: true, completion: nil)
     }
 }
