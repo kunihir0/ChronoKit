@@ -12,6 +12,17 @@
 #import "TikTok/AWEURLModel.h"
 #import "TikTok/AWEPhotoAlbumPhoto.h"
 #import "TikTok/AWEAwemeDetailTableViewCell.h"
+#import "TikTok/AWEMiscDownloadAddrs.h"
+#import "TikTok/AWEMusicExtraModel.h"
+#import "TikTok/AWEMusicPGCSoundModel.h"
+#import "TikTok/AWEMusicUGCSoundModel.h"
+#import "TikTok/AWEMusicChorusModel.h"
+#import "TikTok/TTKMusicTT2DSPSongInfo.h"
+#import "TikTok/TTKMusic3rdPartyDSPAuthTokenInfo.h"
+#import "TikTok/TTKMusicAppleMusicAuthTokenInfo.h"
+#import "TikTok/AWEAwemeStatusModel.h"
+#import "TikTok/AWEChallengeModel.h"
+#import "TikTok/AWEShareModel.h"
 
 @interface AWEURLModel (ChronoKit)
 

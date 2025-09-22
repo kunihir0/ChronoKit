@@ -26,6 +26,8 @@ class MediaViewerViewController: UIViewController, UIGestureRecognizerDelegate {
     public var onStateChange: ((ABRepeatState) -> Void)?
     public var onSingleTap: (() -> Void)?
 
+    private var singleTapGesture: UITapGestureRecognizer!
+    private var longPressGesture: UILongPressGestureRecognizer!
 
     private var panGesture: UIPanGestureRecognizer!
 
@@ -59,16 +61,23 @@ class MediaViewerViewController: UIViewController, UIGestureRecognizerDelegate {
     }
 
     private func setupView() {
+        // Create gestures that are needed by media-specific setups first.
+        let doubleTapGesture = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap))
+        doubleTapGesture.numberOfTapsRequired = 2
+        view.addGestureRecognizer(doubleTapGesture)
+
+        singleTapGesture = UITapGestureRecognizer(target: self, action: #selector(handleSingleTap))
+        singleTapGesture.require(toFail: doubleTapGesture)
+        view.addGestureRecognizer(singleTapGesture)
+
+        // Now setup the media view itself
         if mediaItem.mediaType == .video {
             setupVideoPlayer()
         } else {
             setupImageView()
         }
 
-        let doubleTapGesture = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap))
-        doubleTapGesture.numberOfTapsRequired = 2
-        view.addGestureRecognizer(doubleTapGesture)
-
+        // Setup remaining gestures
         let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch))
         pinchGesture.delegate = self
         view.addGestureRecognizer(pinchGesture)
@@ -107,20 +116,12 @@ class MediaViewerViewController: UIViewController, UIGestureRecognizerDelegate {
             view.layer.addSublayer(playerLayer)
         }
 
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleSingleTap))
-        
-
-        let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(handleScrubbing(_:)))
+        longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(handleScrubbing(_:)))
         longPressGesture.minimumPressDuration = 0.2
         view.addGestureRecognizer(longPressGesture)
 
-        // Find the double tap gesture to resolve conflicts
-        if let doubleTapGesture = view.gestureRecognizers?.first(where: { ($0 as? UITapGestureRecognizer)?.numberOfTapsRequired == 2 }) {
-            tapGesture.require(toFail: doubleTapGesture)
-        }
-
-        tapGesture.require(toFail: longPressGesture)
-        view.addGestureRecognizer(tapGesture)
+        // The single tap gesture is now global, but we need to make sure it doesn't fire when we long-press on a video.
+        singleTapGesture.require(toFail: longPressGesture)
     }
 
 
@@ -239,21 +240,20 @@ class MediaViewerViewController: UIViewController, UIGestureRecognizerDelegate {
     }
 
     @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
-        guard let targetView = imageView ?? view else { return }
         if gesture.state == .changed {
-            targetView.transform = targetView.transform.scaledBy(x: gesture.scale, y: gesture.scale)
+            view.transform = view.transform.scaledBy(x: gesture.scale, y: gesture.scale)
             gesture.scale = 1
         } else if gesture.state == .ended {
             // Enable panning only if zoomed in
-            self.panGesture.isEnabled = targetView.transform.a > 1.0
+            self.panGesture.isEnabled = view.transform.a > 1.0
         }
     }
 
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
-        guard let targetView = imageView ?? view, targetView.transform.a > 1 else { return } // Only pan if zoomed
+        guard view.transform.a > 1 else { return } // Only pan if zoomed
         if gesture.state == .changed {
             let translation = gesture.translation(in: view)
-            targetView.transform = targetView.transform.translatedBy(x: translation.x, y: translation.y)
+            view.transform = view.transform.translatedBy(x: translation.x, y: translation.y)
             gesture.setTranslation(.zero, in: view)
         }
     }

@@ -1,5 +1,7 @@
 import Foundation
 import os.log
+import AVFoundation
+import UIKit
 
 @objc(ChronoKitDownloadManager)
 public class DownloadManager: NSObject {
@@ -124,6 +126,32 @@ extension DownloadManager: URLSessionDownloadDelegate {
         do {
             try fileManager.createDirectory(at: mediaTypeURL, withIntermediateDirectories: true, attributes: nil)
             try fileManager.moveItem(at: location, to: destinationURL)
+
+            // Get file attributes and media properties
+            do {
+                let fileAttributes = try FileManager.default.attributesOfItem(atPath: destinationURL.path)
+                if let size = fileAttributes[.size] as? NSNumber {
+                    metadata.fileSize = size.int64Value
+                }
+            } catch {
+                os_log("Error getting file size: %@", log: ck_log, type: .error, error.localizedDescription)
+            }
+
+            if metadata.mediaType == .video {
+                let asset = AVURLAsset(url: destinationURL)
+                metadata.duration = CMTimeGetSeconds(asset.duration)
+                if let track = asset.tracks(withMediaType: .video).first {
+                    let size = track.naturalSize.applying(track.preferredTransform)
+                    metadata.width = Int(abs(size.width))
+                    metadata.height = Int(abs(size.height))
+                }
+            } else { // Photo
+                if let image = UIImage(contentsOfFile: destinationURL.path) {
+                    metadata.width = Int(image.size.width * image.scale)
+                    metadata.height = Int(image.size.height * image.scale)
+                }
+            }
+
             metadata.primaryLocalFilePath = destinationURL.path
             os_log("Successfully saved file to: %@", log: ck_log, type: .default, destinationURL.path)
             do {
@@ -201,9 +229,11 @@ extension DownloadManager: URLSessionDownloadDelegate {
         processQueue()
     }
 
-    @objc(downloadContentWithItemID:authorName:authorID:creationDate:caption:mediaType:urlLists:)
-    public func downloadContent(itemID: String, authorName: String, authorID: String, creationDate: Date, caption: String?, mediaType: MediaType, urlLists: [[String]]) {
+    @objc(downloadContentWithItemID:authorName:authorID:creationDate:caption:mediaType:urlLists:secUserID:customID:signature:bioUrl:awemeCount:followingCount:followerCount:favoritingCount:accountRegion:country:province:city:language:isPrivateAccount:isProAccount:verificationType:shareURL:avatarThumbURI:avatarMediumURI:avatarLargerURI:playCount:downloadCount:shareCount:commentCount:diggCount:favoriteCount:)
+    public func downloadContent(itemID: String, authorName: String, authorID: String, creationDate: Date, caption: String?, mediaType: MediaType, urlLists: [[String]], secUserID: String?, customID: String?, signature: String?, bioUrl: String?, awemeCount: NSNumber?, followingCount: NSNumber?, followerCount: NSNumber?, favoritingCount: NSNumber?, accountRegion: String?, country: String?, province: String?, city: String?, language: String?, isPrivateAccount: Bool, isProAccount: Bool, verificationType: NSNumber?, shareURL: String?, avatarThumbURI: String?, avatarMediumURI: String?, avatarLargerURI: String?, playCount: NSNumber?, downloadCount: NSNumber?, shareCount: NSNumber?, commentCount: NSNumber?, diggCount: NSNumber?, favoriteCount: NSNumber?) {
         os_log("Starting download for itemID: %@", log: ck_log, type: .default, itemID)
+
+        let metadata = MediaMetadata(itemID: itemID, authorName: authorName, authorID: authorID, creationDate: creationDate, downloadDate: Date(), caption: caption, mediaType: mediaType, primaryLocalFilePath: nil, isFavorite: false, tags: [], width: 0, height: 0, duration: 0, fileSize: 0, secUserID: secUserID, customID: customID, signature: signature, bioUrl: bioUrl, awemeCount: awemeCount?.intValue, followingCount: followingCount?.intValue, followerCount: followerCount?.intValue, favoritingCount: favoritingCount?.intValue, accountRegion: accountRegion, country: country, province: province, city: city, language: language, isPrivateAccount: isPrivateAccount, isProAccount: isProAccount, verificationType: verificationType?.intValue, shareURL: shareURL, avatarThumbURI: avatarThumbURI, avatarMediumURI: avatarMediumURI, avatarLargerURI: avatarLargerURI, playCount: playCount?.intValue, downloadCount: downloadCount?.intValue, shareCount: shareCount?.intValue, commentCount: commentCount?.intValue, diggCount: diggCount?.intValue, favoriteCount: favoriteCount?.intValue)
 
         if mediaType == .video {
             guard let originURLList = urlLists.first else {
@@ -214,7 +244,6 @@ extension DownloadManager: URLSessionDownloadDelegate {
             
             let highQuality = UserDefaults.standard.bool(forKey: "high_quality")
             if let videoURL = URLFilter.shared.bestVideoURL(from: originURLList, highQuality: highQuality) {
-                let metadata = MediaMetadata(itemID: itemID, authorName: authorName, authorID: authorID, creationDate: creationDate, caption: caption, mediaType: mediaType, primaryLocalFilePath: nil)
                 os_log("Initiating video download.", log: ck_log, type: .default)
                 self.downloadFile(url: videoURL, metadata: metadata)
             } else {
@@ -226,7 +255,8 @@ extension DownloadManager: URLSessionDownloadDelegate {
 
             for (i, originURLList) in urlLists.enumerated() {
                 let uniqueItemID = "\(itemID)-\(i)"
-                let photoMetadata = MediaMetadata(itemID: uniqueItemID, authorName: authorName, authorID: authorID, creationDate: creationDate, caption: caption, mediaType: mediaType, primaryLocalFilePath: nil)
+                let photoMetadata = metadata.copy() as! MediaMetadata
+                photoMetadata.itemID = uniqueItemID
 
                 if UserDefaults.standard.bool(forKey: "debug_download_all_urls") {
                     let urlsToDownload = originURLList.compactMap { urlString -> URL? in

@@ -7,6 +7,15 @@ public class VaultBrowserViewController: UIViewController, UICollectionViewDeleg
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<Int, MediaMetadata>!
     private var media: [MediaMetadata] = []
+    private var isFavoritesFilterActive = false
+    private var filterButton: UIBarButtonItem!
+    private var sortButton: UIBarButtonItem!
+
+    private enum SortMode {
+        case downloadDate
+        case creationDate
+    }
+    private var currentSortMode: SortMode = .downloadDate
 
     public init(creatorID: String?) {
         self.creatorID = creatorID
@@ -14,7 +23,7 @@ public class VaultBrowserViewController: UIViewController, UICollectionViewDeleg
     }
 
     required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+        fatalError("init(coder:)")
     }
 
     public override func viewDidLoad() {
@@ -23,9 +32,42 @@ public class VaultBrowserViewController: UIViewController, UICollectionViewDeleg
         self.title = "Media Browser"
         self.view.backgroundColor = .systemGroupedBackground
 
+        setupNavButtons()
         setupCollectionView()
         setupDataSource()
         loadMedia()
+    }
+
+    public override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        loadMedia() // Reload data to reflect potential favorite changes
+    }
+
+    private func setupNavButtons() {
+        filterButton = UIBarButtonItem(image: UIImage(systemName: "heart"), style: .plain, target: self, action: #selector(filterButtonTapped))
+
+        let sortByDownload = UIAction(title: "Sort by Download Date") { [weak self] _ in
+            self?.updateSortMode(to: .downloadDate)
+        }
+        let sortByCreation = UIAction(title: "Sort by Creation Date") { [weak self] _ in
+            self?.updateSortMode(to: .creationDate)
+        }
+        let sortMenu = UIMenu(title: "Sort By", children: [sortByDownload, sortByCreation])
+        sortButton = UIBarButtonItem(image: UIImage(systemName: "arrow.up.arrow.down"), menu: sortMenu)
+
+        navigationItem.rightBarButtonItems = [filterButton, sortButton]
+    }
+
+    @objc private func filterButtonTapped() {
+        isFavoritesFilterActive.toggle()
+        let imageName = isFavoritesFilterActive ? "heart.fill" : "heart"
+        filterButton.image = UIImage(systemName: imageName)
+        applySnapshot()
+    }
+
+    private func updateSortMode(to mode: SortMode) {
+        currentSortMode = mode
+        applySnapshot()
     }
 
     private func setupCollectionView() {
@@ -58,6 +100,8 @@ public class VaultBrowserViewController: UIViewController, UICollectionViewDeleg
             (collectionView, indexPath, mediaItem) -> UICollectionViewCell? in
             let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "VaultItemCell", for: indexPath) as! VaultItemCell
             
+            cell.configure(with: mediaItem)
+
             ThumbnailService.shared.getThumbnail(for: mediaItem) { image in
                 cell.imageView.image = image
             }
@@ -78,14 +122,34 @@ public class VaultBrowserViewController: UIViewController, UICollectionViewDeleg
     private func applySnapshot() {
         var snapshot = NSDiffableDataSourceSnapshot<Int, MediaMetadata>()
         snapshot.appendSections([0])
-        snapshot.appendItems(media)
+
+        var itemsToDisplay = isFavoritesFilterActive ? media.filter { $0.isFavorite } : media
+
+        switch currentSortMode {
+        case .downloadDate:
+            itemsToDisplay.sort { $0.downloadDate > $1.downloadDate }
+        case .creationDate:
+            itemsToDisplay.sort { $0.creationDate > $1.creationDate }
+        }
+
+        snapshot.appendItems(itemsToDisplay)
+
         dataSource.apply(snapshot, animatingDifferences: true)
     }
 
     // MARK: - UICollectionViewDelegate
 
     public func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-        let pageVC = MediaViewerPageViewController(mediaItems: media, initialIndex: indexPath.item)
+        var itemsToDisplay = isFavoritesFilterActive ? media.filter { $0.isFavorite } : media
+
+        switch currentSortMode {
+        case .downloadDate:
+            itemsToDisplay.sort { $0.downloadDate > $1.downloadDate }
+        case .creationDate:
+            itemsToDisplay.sort { $0.creationDate > $1.creationDate }
+        }
+
+        let pageVC = MediaViewerPageViewController(mediaItems: itemsToDisplay, initialIndex: indexPath.item)
         pageVC.modalPresentationStyle = .fullScreen
         present(pageVC, animated: true, completion: nil)
     }

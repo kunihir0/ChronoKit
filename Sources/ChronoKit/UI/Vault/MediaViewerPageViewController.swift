@@ -9,7 +9,9 @@ class MediaViewerPageViewController: UIPageViewController, UIPageViewControllerD
     private var hideTimer: Timer?
     private var rightSideBarView: UIView!
     private var abRepeatButton: UIButton!
-
+    private var heartButton: UIButton!
+    private var infoButton: UIButton!
+    private var infoView: VaultItemInfoView!
 
     init(mediaItems: [MediaMetadata], initialIndex: Int) {
         self.mediaItems = mediaItems
@@ -19,6 +21,15 @@ class MediaViewerPageViewController: UIPageViewController, UIPageViewControllerD
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        // Dispatch to the next runloop to give the collection view time to lay out its cells before we select one.
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.thumbnailCollectionView.selectItem(at: IndexPath(item: self.currentIndex, section: 0), animated: false, scrollPosition: .centeredHorizontally)
+        }
     }
 
     override func viewDidLoad() {
@@ -36,14 +47,38 @@ class MediaViewerPageViewController: UIPageViewController, UIPageViewControllerD
         let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePanGesture(_:)))
         view.addGestureRecognizer(panGesture)
 
+        setupInfoView()
+
         resetAutoHideTimer()
 
         updateControls(for: mediaItems[currentIndex])
+        updateFavoriteButtonState()
+        infoView.configure(with: mediaItems[currentIndex])
+    }
+
+    private func setupInfoView() {
+        infoView = VaultItemInfoView()
+        infoView.translatesAutoresizingMaskIntoConstraints = false
+        infoView.isHidden = true
+        view.addSubview(infoView)
+
+        infoView.onToggleExpansion = { [weak self] in
+            UIView.animate(withDuration: 0.3) {
+                self?.view.layoutIfNeeded()
+            }
+        }
+
+        NSLayoutConstraint.activate([
+            infoView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            infoView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            infoView.bottomAnchor.constraint(equalTo: thumbnailCollectionView.topAnchor)
+        ])
     }
 
     private func updateControls(for mediaItem: MediaMetadata) {
+        // The sidebar is always visible, but the A-B repeat button is only for videos.
         let isVideo = mediaItem.mediaType == .video
-        rightSideBarView.isHidden = !isVideo
+        abRepeatButton.isHidden = !isVideo
     }
 
     // MARK: - UIPageViewControllerDelegate
@@ -54,6 +89,8 @@ class MediaViewerPageViewController: UIPageViewController, UIPageViewControllerD
         }
         currentIndex = index
         updateControls(for: mediaItems[currentIndex])
+        updateFavoriteButtonState()
+        infoView.configure(with: mediaItems[currentIndex])
         thumbnailCollectionView.selectItem(at: IndexPath(item: currentIndex, section: 0), animated: true, scrollPosition: .centeredHorizontally)
         resetAutoHideTimer()
     }
@@ -117,8 +154,6 @@ class MediaViewerPageViewController: UIPageViewController, UIPageViewControllerD
             thumbnailCollectionView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
             thumbnailCollectionView.heightAnchor.constraint(equalToConstant: 100)
         ])
-
-        thumbnailCollectionView.selectItem(at: IndexPath(item: currentIndex, section: 0), animated: false, scrollPosition: .centeredHorizontally)
     }
 
     // MARK: - UICollectionViewDataSource
@@ -145,6 +180,8 @@ class MediaViewerPageViewController: UIPageViewController, UIPageViewControllerD
         setViewControllers([vc], direction: direction, animated: true, completion: nil)
         currentIndex = selectedIndex
         updateControls(for: mediaItems[currentIndex])
+        updateFavoriteButtonState()
+        infoView.configure(with: mediaItems[currentIndex])
         resetAutoHideTimer()
     }
 
@@ -154,6 +191,11 @@ class MediaViewerPageViewController: UIPageViewController, UIPageViewControllerD
         let isHidden = thumbnailCollectionView.isHidden
         thumbnailCollectionView.isHidden = !isHidden
         rightSideBarView.isHidden = !isHidden
+        // Also hide the info view if it's open
+        if !isHidden {
+            infoView.isHidden = true
+        }
+
         if !isHidden {
             resetAutoHideTimer()
         }
@@ -164,6 +206,7 @@ class MediaViewerPageViewController: UIPageViewController, UIPageViewControllerD
         hideTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
             self?.thumbnailCollectionView.isHidden = true
             self?.rightSideBarView.isHidden = true
+            self?.infoView.isHidden = true // Hide info view as well
         }
     }
 
@@ -174,23 +217,52 @@ class MediaViewerPageViewController: UIPageViewController, UIPageViewControllerD
         rightSideBarView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(rightSideBarView)
 
+        let stackView = UIStackView()
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        stackView.axis = .vertical
+        stackView.spacing = 20
+        stackView.alignment = .center
+
         abRepeatButton = UIButton(type: .system)
-        abRepeatButton.translatesAutoresizingMaskIntoConstraints = false
         abRepeatButton.setImage(UIImage(systemName: "a.circle"), for: .normal)
         abRepeatButton.tintColor = .white
         abRepeatButton.addTarget(self, action: #selector(abRepeatButtonTapped), for: .touchUpInside)
-        rightSideBarView.addSubview(abRepeatButton)
+
+        heartButton = UIButton(type: .system)
+        heartButton.setImage(UIImage(systemName: "heart"), for: .normal)
+        heartButton.setImage(UIImage(systemName: "heart.fill"), for: .selected)
+        heartButton.tintColor = .white
+        heartButton.addTarget(self, action: #selector(heartButtonTapped), for: .touchUpInside)
+
+        infoButton = UIButton(type: .system)
+        infoButton.setImage(UIImage(systemName: "info.circle"), for: .normal)
+        infoButton.tintColor = .white
+        infoButton.addTarget(self, action: #selector(infoButtonTapped), for: .touchUpInside)
+
+        stackView.addArrangedSubview(abRepeatButton)
+        stackView.addArrangedSubview(heartButton)
+        stackView.addArrangedSubview(infoButton)
+
+        rightSideBarView.addSubview(stackView)
 
         NSLayoutConstraint.activate([
             rightSideBarView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             rightSideBarView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             rightSideBarView.widthAnchor.constraint(equalToConstant: 60),
-            rightSideBarView.heightAnchor.constraint(equalToConstant: 100),
 
-            abRepeatButton.centerXAnchor.constraint(equalTo: rightSideBarView.centerXAnchor),
-            abRepeatButton.centerYAnchor.constraint(equalTo: rightSideBarView.centerYAnchor),
+            stackView.topAnchor.constraint(equalTo: rightSideBarView.topAnchor),
+            stackView.bottomAnchor.constraint(equalTo: rightSideBarView.bottomAnchor),
+            stackView.leadingAnchor.constraint(equalTo: rightSideBarView.leadingAnchor),
+            stackView.trailingAnchor.constraint(equalTo: rightSideBarView.trailingAnchor),
+
             abRepeatButton.widthAnchor.constraint(equalToConstant: 44),
-            abRepeatButton.heightAnchor.constraint(equalToConstant: 44)
+            abRepeatButton.heightAnchor.constraint(equalToConstant: 44),
+
+            heartButton.widthAnchor.constraint(equalToConstant: 44),
+            heartButton.heightAnchor.constraint(equalToConstant: 44),
+
+            infoButton.widthAnchor.constraint(equalToConstant: 44),
+            infoButton.heightAnchor.constraint(equalToConstant: 44)
         ])
     }
 
@@ -200,6 +272,28 @@ class MediaViewerPageViewController: UIPageViewController, UIPageViewControllerD
         }
     }
 
+    @objc private func heartButtonTapped() {
+        let item = mediaItems[currentIndex]
+        item.isFavorite.toggle()
+        updateFavoriteButtonState()
+        infoView.configure(with: item) // Refresh the info view
+        HapticFeedbackManager.shared.playImpact(style: .light)
+
+        do {
+            try VaultDatabaseService.shared.updateFavoriteStatus(for: item.itemID, isFavorite: item.isFavorite)
+        } catch {
+            // Handle error
+            print("Error updating favorite status: \(error)")
+        }
+    }
+
+    private func updateFavoriteButtonState() {
+        heartButton.isSelected = mediaItems[currentIndex].isFavorite
+    }
+
+    @objc private func infoButtonTapped() {
+        infoView.isHidden.toggle()
+    }
 
     // MARK: - Pan to Dismiss
 

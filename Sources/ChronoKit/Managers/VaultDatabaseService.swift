@@ -8,33 +8,79 @@ public class VaultDatabaseService {
 
     private let mediaMetadata = Table("media_metadata")
     private let authors = Table("authors")
+    private let statistics = Table("statistics")
     private let tags = Table("tags")
     private let media_tags = Table("media_tags")
+    private let author_history = Table("author_history")
+
+    // Common
     private let id = Expression<Int64>("id")
+    private let media_id = Expression<Int64>("media_id")
+
+    // Media Metadata
     private let itemID = Expression<String>("itemID")
-    private let authorName = Expression<String>("authorName")
     private let authorID = Expression<String>("authorID")
     private let creationDate = Expression<Date>("creationDate")
+    private let downloadDate = Expression<Date>("downloadDate")
     private let caption = Expression<String?>("caption")
     private let mediaType = Expression<Int>("mediaType")
     private let primaryLocalFilePath = Expression<String?>("primaryLocalFilePath")
+
+    // Authors
+    private let author_id = Expression<String>("author_id")
+    private let author_name = Expression<String?>("author_name")
+    private let secUserID = Expression<String?>("secUserID")
+    private let customID = Expression<String?>("customID")
+    private let signature = Expression<String?>("signature")
+    private let bioUrl = Expression<String?>("bioUrl")
+    private let bioEmail = Expression<String?>("bioEmail")
+    private let awemeCount = Expression<Int?>("awemeCount")
+    private let followingCount = Expression<Int?>("followingCount")
+    private let followerCount = Expression<Int?>("followerCount")
+    private let favoritingCount = Expression<Int?>("favoritingCount")
+    private let accountRegion = Expression<String?>("accountRegion")
+    private let country = Expression<String?>("country")
+    private let province = Expression<String?>("province")
+    private let city = Expression<String?>("city")
+    private let language = Expression<String?>("language")
+    private let isPrivateAccount = Expression<Bool?>("isPrivateAccount")
+    private let isProAccount = Expression<Bool?>("isProAccount")
+    private let verificationType = Expression<Int?>("verificationType")
+    private let shareURL = Expression<String?>("shareURL")
+    private let avatarThumbURI = Expression<String?>("avatarThumbURI")
+    private let avatarMediumURI = Expression<String?>("avatarMediumURI")
+    private let avatarLargerURI = Expression<String?>("avatarLargerURI")
+
+    // Statistics
     private let isFavorite = Expression<Bool>("isFavorite")
     private let width = Expression<Int>("width")
     private let height = Expression<Int>("height")
     private let duration = Expression<TimeInterval>("duration")
     private let fileSize = Expression<Int64>("fileSize")
+    private let playCount = Expression<Int?>("playCount")
+    private let downloadCount = Expression<Int?>("downloadCount")
+    private let shareCount = Expression<Int?>("shareCount")
+    private let commentCount = Expression<Int?>("commentCount")
+    private let diggCount = Expression<Int?>("diggCount")
+    private let favoriteCount = Expression<Int?>("favoriteCount")
+    private let vq_score = Expression<Double?>("vq_score")
+    private let loudness = Expression<Double?>("loudness")
+    private let rec_like_model_score = Expression<Double?>("rec_like_model_score")
+    private let rec_finish = Expression<Double?>("rec_finish")
+    private let rec_follow = Expression<Double?>("rec_follow")
+    private let rec_share = Expression<Double?>("rec_share")
+    private let rec_comment = Expression<Double?>("rec_comment")
 
-    // Authors table columns
-    private let author_id = Expression<String>("author_id")
-    private let author_name = Expression<String>("author_name")
-
-    // Tags table columns
+    // Tags
     private let tag_id = Expression<Int64>("tag_id")
     private let tag_name = Expression<String>("tag_name")
 
-    // Media_tags table columns
+    // Media_tags
     private let media_item_id = Expression<Int64>("media_item_id")
 
+    // Author History
+    private let history_id = Expression<Int64>("history_id")
+    private let change_date = Expression<Date>("change_date")
 
     private init() {
         do {
@@ -42,24 +88,67 @@ public class VaultDatabaseService {
             let documentsDirectory = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
             let vaultURL = documentsDirectory.appendingPathComponent("ChronoKitVault")
 
-            // Create the vault directory if it doesn't exist
             try fileManager.createDirectory(at: vaultURL, withIntermediateDirectories: true, attributes: nil)
 
             let dbPath = vaultURL.appendingPathComponent("chronokit.sqlite3").path
             db = try Connection(dbPath)
-            try createMediaMetadataTable()
+            try createTables()
         } catch {
             db = nil
             print("Error initializing database: \(error)")
         }
     }
 
-    private func createMediaMetadataTable() throws {
+    private func createTables() throws {
         guard let db = db else { return }
 
         try db.run(authors.create(ifNotExists: true) { t in
             t.column(author_id, primaryKey: true)
             t.column(author_name)
+            t.column(secUserID)
+            t.column(customID)
+            t.column(signature)
+            t.column(bioUrl)
+            t.column(bioEmail)
+            t.column(awemeCount)
+            t.column(followingCount)
+            t.column(followerCount)
+            t.column(favoritingCount)
+            t.column(accountRegion)
+            t.column(country)
+            t.column(province)
+            t.column(city)
+            t.column(language)
+            t.column(isPrivateAccount)
+            t.column(isProAccount)
+            t.column(verificationType)
+            t.column(shareURL)
+            t.column(avatarThumbURI)
+            t.column(avatarMediumURI)
+            t.column(avatarLargerURI)
+        })
+
+        try db.run(statistics.create(ifNotExists: true) { t in
+            t.column(media_id, primaryKey: true)
+            t.column(isFavorite, defaultValue: false)
+            t.column(width, defaultValue: 0)
+            t.column(height, defaultValue: 0)
+            t.column(duration, defaultValue: 0)
+            t.column(fileSize, defaultValue: 0)
+            t.column(playCount)
+            t.column(downloadCount)
+            t.column(shareCount)
+            t.column(commentCount)
+            t.column(diggCount)
+            t.column(favoriteCount)
+            t.column(vq_score)
+            t.column(loudness)
+            t.column(rec_like_model_score)
+            t.column(rec_finish)
+            t.column(rec_follow)
+            t.column(rec_share)
+            t.column(rec_comment)
+            t.foreignKey(media_id, references: mediaMetadata, id, delete: .cascade)
         })
 
         try db.run(tags.create(ifNotExists: true) { t in
@@ -80,23 +169,70 @@ public class VaultDatabaseService {
             t.column(itemID, unique: true)
             t.column(authorID)
             t.column(creationDate)
+            t.column(downloadDate)
             t.column(caption)
             t.column(mediaType)
             t.column(primaryLocalFilePath)
-            t.column(isFavorite, defaultValue: false)
-            t.column(width, defaultValue: 0)
-            t.column(height, defaultValue: 0)
-            t.column(duration, defaultValue: 0)
-            t.column(fileSize, defaultValue: 0)
             t.foreignKey(authorID, references: authors, self.author_id)
+        })
+
+        try db.run(author_history.create(ifNotExists: true) { t in
+            t.column(history_id, primaryKey: .autoincrement)
+            t.column(author_id)
+            t.column(change_date)
+            t.column(author_name)
+            t.column(customID)
+            t.column(signature)
+            t.foreignKey(author_id, references: authors, self.author_id, delete: .cascade)
         })
     }
 
     public func saveMetadata(metadata: MediaMetadata) throws {
         guard let db = db else { return }
 
-        // Insert author if they don't exist
-        try db.run(authors.insert(or: .ignore, author_id <- metadata.authorID, author_name <- metadata.authorName))
+        // Check for author changes and save to history
+        let authorQuery = authors.filter(author_id == metadata.authorID)
+        if let existingAuthor = try db.pluck(authorQuery) {
+            let existingName = existingAuthor[author_name]
+            let existingCustomID = existingAuthor[customID]
+            let existingSignature = existingAuthor[signature]
+
+            if existingName != metadata.authorName || existingCustomID != metadata.customID || existingSignature != metadata.signature {
+                try db.run(author_history.insert(
+                    author_id <- metadata.authorID,
+                    change_date <- Date(),
+                    author_name <- metadata.authorName,
+                    customID <- metadata.customID,
+                    signature <- metadata.signature
+                ))
+            }
+        }
+
+        try db.run(authors.insert(or: .replace,
+            author_id <- metadata.authorID,
+            author_name <- metadata.authorName,
+            secUserID <- metadata.secUserID,
+            customID <- metadata.customID,
+            signature <- metadata.signature,
+            bioUrl <- metadata.bioUrl,
+            bioEmail <- metadata.bioEmail,
+            awemeCount <- metadata.awemeCount,
+            followingCount <- metadata.followingCount,
+            followerCount <- metadata.followerCount,
+            favoritingCount <- metadata.favoritingCount,
+            accountRegion <- metadata.accountRegion,
+            country <- metadata.country,
+            province <- metadata.province,
+            city <- metadata.city,
+            language <- metadata.language,
+            isPrivateAccount <- metadata.isPrivateAccount,
+            isProAccount <- metadata.isProAccount,
+            verificationType <- metadata.verificationType,
+            shareURL <- metadata.shareURL,
+            avatarThumbURI <- metadata.avatarThumbURI,
+            avatarMediumURI <- metadata.avatarMediumURI,
+            avatarLargerURI <- metadata.avatarLargerURI
+        ))
 
         let fileManager = FileManager.default
         let vaultURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("ChronoKitVault")
@@ -106,18 +242,35 @@ public class VaultDatabaseService {
             itemID <- metadata.itemID,
             authorID <- metadata.authorID,
             creationDate <- metadata.creationDate,
+            downloadDate <- metadata.downloadDate,
             caption <- metadata.caption,
             mediaType <- metadata.mediaType.rawValue,
-            primaryLocalFilePath <- relativePath,
+            primaryLocalFilePath <- relativePath
+        )
+        let rowid = try db.run(insert)
+
+        try db.run(statistics.insert(or: .replace,
+            media_id <- rowid,
             isFavorite <- metadata.isFavorite,
             width <- metadata.width,
             height <- metadata.height,
             duration <- metadata.duration,
-            fileSize <- metadata.fileSize
-        )
-        let rowid = try db.run(insert)
+            fileSize <- metadata.fileSize,
+            playCount <- metadata.playCount,
+            downloadCount <- metadata.downloadCount,
+            shareCount <- metadata.shareCount,
+            commentCount <- metadata.commentCount,
+            diggCount <- metadata.diggCount,
+            favoriteCount <- metadata.favoriteCount,
+            vq_score <- metadata.vq_score,
+            loudness <- metadata.loudness,
+            rec_like_model_score <- metadata.rec_like_model_score,
+            rec_finish <- metadata.rec_finish,
+            rec_follow <- metadata.rec_follow,
+            rec_share <- metadata.rec_share,
+            rec_comment <- metadata.rec_comment
+        ))
 
-        // Handle tags
         for tagName in metadata.tags {
             let tagId = try db.run(tags.insert(or: .ignore, self.tag_name <- tagName))
             try db.run(media_tags.insert(or: .ignore, media_item_id <- rowid, self.tag_id <- tagId))
@@ -127,7 +280,7 @@ public class VaultDatabaseService {
     public func loadMetadata() throws -> [MediaMetadata] {
         guard let db = db else { return [] }
         var allMetadata: [MediaMetadata] = []
-        let query = mediaMetadata.join(authors, on: mediaMetadata[authorID] == authors[author_id])
+        let query = mediaMetadata.join(authors, on: mediaMetadata[authorID] == authors[author_id]).join(statistics, on: mediaMetadata[id] == statistics[media_id])
         for row in try db.prepare(query) {
             let mediaId = row[mediaMetadata[self.id]]
             let tagsQuery = media_tags.join(tags, on: media_tags[tag_id] == tags[self.tag_id]).filter(media_tags[media_item_id] == mediaId)
@@ -143,15 +296,50 @@ public class VaultDatabaseService {
                 authorName: row[authors[self.author_name]],
                 authorID: row[mediaMetadata[self.authorID]],
                 creationDate: row[mediaMetadata[self.creationDate]],
+                downloadDate: row[mediaMetadata[self.downloadDate]],
                 caption: row[mediaMetadata[self.caption]],
                 mediaType: MediaType(rawValue: row[mediaMetadata[self.mediaType]]) ?? .video,
                 primaryLocalFilePath: fullPath,
-                isFavorite: row[mediaMetadata[self.isFavorite]],
+                isFavorite: row[statistics[self.isFavorite]],
                 tags: tagsArray,
-                width: row[mediaMetadata[self.width]],
-                height: row[mediaMetadata[self.height]],
-                duration: row[mediaMetadata[self.duration]],
-                fileSize: row[mediaMetadata[self.fileSize]]
+                width: row[statistics[self.width]],
+                height: row[statistics[self.height]],
+                duration: row[statistics[self.duration]],
+                fileSize: row[statistics[self.fileSize]],
+                secUserID: row[authors[self.secUserID]],
+                customID: row[authors[self.customID]],
+                signature: row[authors[self.signature]],
+                bioUrl: row[authors[self.bioUrl]],
+                bioEmail: row[authors[self.bioEmail]],
+                awemeCount: row[authors[self.awemeCount]],
+                followingCount: row[authors[self.followingCount]],
+                followerCount: row[authors[self.followerCount]],
+                favoritingCount: row[authors[self.favoritingCount]],
+                accountRegion: row[authors[self.accountRegion]],
+                country: row[authors[self.country]],
+                province: row[authors[self.province]],
+                city: row[authors[self.city]],
+                language: row[authors[self.language]],
+                isPrivateAccount: row[authors[self.isPrivateAccount]],
+                isProAccount: row[authors[self.isProAccount]],
+                verificationType: row[authors[self.verificationType]],
+                shareURL: row[authors[self.shareURL]],
+                avatarThumbURI: row[authors[self.avatarThumbURI]],
+                avatarMediumURI: row[authors[self.avatarMediumURI]],
+                avatarLargerURI: row[authors[self.avatarLargerURI]],
+                playCount: row[statistics[self.playCount]],
+                downloadCount: row[statistics[self.downloadCount]],
+                shareCount: row[statistics[self.shareCount]],
+                commentCount: row[statistics[self.commentCount]],
+                diggCount: row[statistics[self.diggCount]],
+                favoriteCount: row[statistics[self.favoriteCount]],
+                vq_score: row[statistics[self.vq_score]],
+                loudness: row[statistics[self.loudness]],
+                rec_like_model_score: row[statistics[self.rec_like_model_score]],
+                rec_finish: row[statistics[self.rec_finish]],
+                rec_follow: row[statistics[self.rec_follow]],
+                rec_share: row[statistics[self.rec_share]],
+                rec_comment: row[statistics[self.rec_comment]]
             )
             allMetadata.append(metadata)
         }
@@ -164,11 +352,22 @@ public class VaultDatabaseService {
         try db.run(item.delete())
     }
 
+    public func updateFavoriteStatus(for itemID: String, isFavorite: Bool) throws {
+        guard let db = db else { return }
+
+        let mediaItem = mediaMetadata.filter(self.itemID == itemID)
+        if let media = try db.pluck(mediaItem) {
+            let mediaId = media[id]
+            let statistic = statistics.filter(media_id == mediaId)
+            try db.run(statistic.update(self.isFavorite <- isFavorite))
+        }
+    }
+
     public func fetchCreators() throws -> [(authorID: String, authorName: String)] {
         guard let db = db else { return [] }
         var creators: [(authorID: String, authorName: String)] = []
         for row in try db.prepare(authors) {
-            creators.append((authorID: row[self.author_id], authorName: row[self.author_name]))
+            creators.append((authorID: row[self.author_id], authorName: row[self.author_name] ?? ""))
         }
         return creators
     }
@@ -187,7 +386,7 @@ public class VaultDatabaseService {
     public func loadMedia(for authorID: String?) throws -> [MediaMetadata] {
         guard let db = db else { return [] }
         var allMetadata: [MediaMetadata] = []
-        var query = mediaMetadata.join(authors, on: mediaMetadata[self.authorID] == authors[author_id])
+        var query = mediaMetadata.join(authors, on: mediaMetadata[self.authorID] == authors[author_id]).join(statistics, on: mediaMetadata[id] == statistics[media_id])
         if let authorID = authorID {
             query = query.filter(mediaMetadata[self.authorID] == authorID)
         }
@@ -206,15 +405,49 @@ public class VaultDatabaseService {
                 authorName: row[authors[self.author_name]],
                 authorID: row[mediaMetadata[self.authorID]],
                 creationDate: row[mediaMetadata[self.creationDate]],
+                downloadDate: row[mediaMetadata[self.downloadDate]],
                 caption: row[mediaMetadata[self.caption]],
                 mediaType: MediaType(rawValue: row[mediaMetadata[self.mediaType]]) ?? .video,
                 primaryLocalFilePath: fullPath,
-                isFavorite: row[mediaMetadata[self.isFavorite]],
+                isFavorite: row[statistics[self.isFavorite]],
                 tags: tagsArray,
-                width: row[mediaMetadata[self.width]],
-                height: row[mediaMetadata[self.height]],
-                duration: row[mediaMetadata[self.duration]],
-                fileSize: row[mediaMetadata[self.fileSize]]
+                width: row[statistics[self.width]],
+                height: row[statistics[self.height]],
+                duration: row[statistics[self.duration]],
+                fileSize: row[statistics[self.fileSize]],
+                secUserID: row[authors[self.secUserID]],
+                customID: row[authors[self.customID]],
+                signature: row[authors[self.signature]],
+                bioUrl: row[authors[self.bioUrl]],
+                awemeCount: row[authors[self.awemeCount]],
+                followingCount: row[authors[self.followingCount]],
+                followerCount: row[authors[self.followerCount]],
+                favoritingCount: row[authors[self.favoritingCount]],
+                accountRegion: row[authors[self.accountRegion]],
+                country: row[authors[self.country]],
+                province: row[authors[self.province]],
+                city: row[authors[self.city]],
+                language: row[authors[self.language]],
+                isPrivateAccount: row[authors[self.isPrivateAccount]],
+                isProAccount: row[authors[self.isProAccount]],
+                verificationType: row[authors[self.verificationType]],
+                shareURL: row[authors[self.shareURL]],
+                avatarThumbURI: row[authors[self.avatarThumbURI]],
+                avatarMediumURI: row[authors[self.avatarMediumURI]],
+                avatarLargerURI: row[authors[self.avatarLargerURI]],
+                playCount: row[statistics[self.playCount]],
+                downloadCount: row[statistics[self.downloadCount]],
+                shareCount: row[statistics[self.shareCount]],
+                commentCount: row[statistics[self.commentCount]],
+                diggCount: row[statistics[self.diggCount]],
+                favoriteCount: row[statistics[self.favoriteCount]],
+                vq_score: row[statistics[self.vq_score]],
+                loudness: row[statistics[self.loudness]],
+                rec_like_model_score: row[statistics[self.rec_like_model_score]],
+                rec_finish: row[statistics[self.rec_finish]],
+                rec_follow: row[statistics[self.rec_follow]],
+                rec_share: row[statistics[self.rec_share]],
+                rec_comment: row[statistics[self.rec_comment]]
             )
             allMetadata.append(metadata)
         }

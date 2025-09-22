@@ -18,3 +18,5 @@ frida_scripts
 lldb_scripts
 docs
 findings_summary
+logs
+out

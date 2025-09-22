@@ -1,7 +1,6 @@
 #import <Foundation/Foundation.h>
-
-@class AWEPhotoAlbumPhoto;
+#import "AWEPhotoAlbumPhoto.h"
 
 @interface AWEPhotoAlbumModel: NSObject
-@property(readonly, nonatomic) NSArray <AWEPhotoAlbumPhoto *> *photos;
+@property (nonatomic, copy, readwrite) NSArray<AWEPhotoAlbumPhoto *> *photos;
 @end

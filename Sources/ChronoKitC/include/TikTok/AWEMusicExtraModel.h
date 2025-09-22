@@ -1,0 +1,53 @@
+#import <Foundation/Foundation.h>
+
+@interface AWEMusicExtraModel : NSObject
+@property (nonatomic, copy, readwrite) NSString *author;
+@property (nonatomic, copy, readwrite) NSString *picHuge;
+@property (nonatomic, copy, readwrite) NSString *fullSongVeBeatsURLString;
+@property (nonatomic, copy, readwrite) NSString *noStrengthBeatsURLString;
+@property (nonatomic, copy, readwrite) NSString *requestID;
+@property (nonatomic, assign, readwrite) BOOL isUGCMapping;
+@property (nonatomic, assign, readwrite) BOOL isCollected;
+@property (nonatomic, strong, readwrite) NSNumber *followupCount;
+@property (nonatomic, copy, readwrite) NSString *downBeatsURLString;
+@property (nonatomic, copy, readwrite) NSString *picPremium;
+@property (nonatomic, copy, readwrite) NSString *fullSongManMadeBeatsURLString;
+@property (nonatomic, copy, readwrite) NSString *statusMsg;
+@property (nonatomic, copy, readwrite) NSString *templateId;
+@property (nonatomic, copy, readwrite) NSString *metaSongId;
+@property (nonatomic, copy, readwrite) NSString *albumTitle;
+@property (nonatomic, strong, readwrite) NSNumber *maxVideoNumber;
+@property (nonatomic, copy, readwrite) NSString *picSmall;
+@property (nonatomic, copy, readwrite) NSString *musicVid;
+@property (nonatomic, copy, readwrite) NSDictionary *logPassback;
+@property (nonatomic, copy, readwrite) NSArray *allRate;
+@property (nonatomic, copy, readwrite) NSString *fullSongOnsetCNNURLString;
+@property (nonatomic, strong, readwrite) NSNumber *minVideoNumber;
+@property (nonatomic, copy, readwrite) NSString *album;
+@property (nonatomic, copy, readwrite) NSString *songId;
+@property (nonatomic, copy, readwrite) NSString *extractItemId;
+@property (nonatomic, assign, readwrite) BOOL canRead;
+@property (nonatomic, copy, readwrite) NSString *recommendTag;
+@property (nonatomic, copy, readwrite) NSString *fullSongEnergyTraceURLString;
+@property (nonatomic, copy, readwrite) NSString *energyTraceURLString;
+@property (nonatomic, assign, readwrite) BOOL hasEdited;
+@property (nonatomic, copy, readwrite) NSString *onsetCNNURLString;
+@property (nonatomic, copy, readwrite) NSString *topTagURLString;
+@property (nonatomic, strong, readwrite) NSNumber *algorithmType;
+@property (nonatomic, copy, readwrite) NSString *fullSongNoStrengthBeatsURLString;
+@property (nonatomic, copy, readwrite) NSString *picBig;
+@property (nonatomic, strong, readwrite) NSNumber *fullSongAlgorithmType;
+@property (nonatomic, copy, readwrite) NSString *albumId;
+@property (nonatomic, copy, readwrite) NSString *effectId;
+@property (nonatomic, strong, readwrite) NSNumber *lufs;
+@property (nonatomic, copy, readwrite) NSString *manMadeBeatsURLString;
+@property (nonatomic, copy, readwrite) NSString *templateType;
+@property (nonatomic, strong, readwrite) NSNumber *statusCode;
+@property (nonatomic, strong, readwrite) NSNumber *fullSongMinVideoNumber;
+@property (nonatomic, copy, readwrite) NSString *title;
+@property (nonatomic, copy, readwrite) NSString *veBeatsURLString;
+@property (nonatomic, copy, readwrite) NSString *fullSongDownBeatsURLString;
+@property (nonatomic, copy, readwrite) NSString *appleMusicID;
+@property (nonatomic, strong, readwrite) NSNumber *fullSongMaxVideoNumber;
+@property (nonatomic, strong, readwrite) NSNumber *timestamp;
+@end

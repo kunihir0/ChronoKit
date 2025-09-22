@@ -55,14 +55,44 @@ extern os_log_t ck_log;
     
     [ChronoKitDownloadUIManager.shared showProgressView];
 
+    // Media Metadata
     NSString *itemID = model.itemID;
-    NSString *authorName = model.author.nickname;
-    NSString *authorID = model.author.userID;
     NSDate *creationDate = [NSDate dateWithTimeIntervalSince1970:model.createTime.doubleValue];
     NSString *caption = model.desc;
-    
     NSInteger mediaTypeInt = (model.photoAlbum != nil) ? 1 : 0;
-    
+
+    // Author Metadata
+    NSString *authorID = model.author.userID;
+    NSString *authorName = model.author.nickname;
+    NSString *secUserID = model.author.secUserID;
+    NSString *customID = model.author.customID;
+    NSString *signature = model.author.signature;
+    NSString *bioUrl = model.author.bioUrl;
+    NSNumber *awemeCount = model.author.awemeCount;
+    NSNumber *followingCount = model.author.followingCount;
+    NSNumber *followerCount = model.author.followerCount;
+    NSNumber *favoritingCount = model.author.favoritingCount;
+    NSString *accountRegion = model.author.accountRegion;
+    NSString *country = model.author.country;
+    NSString *province = model.author.province;
+    NSString *city = model.author.city;
+    NSString *language = model.author.language;
+    BOOL isPrivateAccount = model.author.isPrivateAccount;
+    BOOL isProAccount = model.author.isProAccount;
+    NSNumber *verificationType = model.author.verificationType;
+    NSString *shareURL = model.author.shareInfo.shareURL;
+    NSString *avatarThumbURI = model.author.avatarThumb.originURLList.firstObject;
+    NSString *avatarMediumURI = model.author.avatarMedium.originURLList.firstObject;
+    NSString *avatarLargerURI = model.author.avatarLarger.originURLList.firstObject;
+
+    // Statistics Metadata
+    NSNumber *playCount = model.statistics.playCount;
+    NSNumber *downloadCount = model.statistics.downLoadCount;
+    NSNumber *shareCount = model.statistics.shareCount;
+    NSNumber *commentCount = model.statistics.commentCount;
+    NSNumber *diggCount = model.statistics.diggCount;
+    NSNumber *favoriteCount = model.statistics.favoriteCount;
+
     NSMutableArray *urlLists = [NSMutableArray array];
     if (mediaTypeInt == 0) { // Video
         if (model.video.playURL) {
@@ -84,7 +114,7 @@ extern os_log_t ck_log;
         }
     }
 
-    [ChronoKitDownloadManager.shared downloadContentWithItemID:itemID authorName:authorName authorID:authorID creationDate:creationDate caption:caption mediaType:mediaTypeInt urlLists:urlLists];
+[ChronoKitDownloadManager.shared downloadContentWithItemID:itemID authorName:authorName authorID:authorID creationDate:creationDate caption:caption mediaType:mediaTypeInt urlLists:urlLists secUserID:secUserID customID:customID signature:signature bioUrl:bioUrl awemeCount:awemeCount followingCount:followingCount followerCount:followerCount favoritingCount:favoritingCount accountRegion:accountRegion country:country province:province city:city language:language isPrivateAccount:isPrivateAccount isProAccount:isProAccount verificationType:verificationType shareURL:shareURL avatarThumbURI:avatarThumbURI avatarMediumURI:avatarMediumURI avatarLargerURI:avatarLargerURI playCount:playCount downloadCount:downloadCount shareCount:shareCount commentCount:commentCount diggCount:diggCount favoriteCount:favoriteCount];
 }
 
 %end
@@ -138,14 +168,44 @@ extern os_log_t ck_log;
     
     [ChronoKitDownloadUIManager.shared showProgressView];
 
+    // Media Metadata
     NSString *itemID = model.itemID;
-    NSString *authorName = model.author.nickname;
-    NSString *authorID = model.author.userID;
     NSDate *creationDate = [NSDate dateWithTimeIntervalSince1970:model.createTime.doubleValue];
     NSString *caption = model.desc;
-    
     NSInteger mediaTypeInt = (model.photoAlbum != nil) ? 1 : 0;
-    
+
+    // Author Metadata
+    NSString *authorID = model.author.userID;
+    NSString *authorName = model.author.nickname;
+    NSString *secUserID = model.author.secUserID;
+    NSString *customID = model.author.customID;
+    NSString *signature = model.author.signature;
+    NSString *bioUrl = model.author.bioUrl;
+    NSNumber *awemeCount = model.author.awemeCount;
+    NSNumber *followingCount = model.author.followingCount;
+    NSNumber *followerCount = model.author.followerCount;
+    NSNumber *favoritingCount = model.author.favoritingCount;
+    NSString *accountRegion = model.author.accountRegion;
+    NSString *country = model.author.country;
+    NSString *province = model.author.province;
+    NSString *city = model.author.city;
+    NSString *language = model.author.language;
+    BOOL isPrivateAccount = model.author.isPrivateAccount;
+    BOOL isProAccount = model.author.isProAccount;
+    NSNumber *verificationType = model.author.verificationType;
+    NSString *shareURL = model.author.shareInfo.shareURL;
+    NSString *avatarThumbURI = model.author.avatarThumb.originURLList.firstObject;
+    NSString *avatarMediumURI = model.author.avatarMedium.originURLList.firstObject;
+    NSString *avatarLargerURI = model.author.avatarLarger.originURLList.firstObject;
+
+    // Statistics Metadata
+    NSNumber *playCount = model.statistics.playCount;
+    NSNumber *downloadCount = model.statistics.downLoadCount;
+    NSNumber *shareCount = model.statistics.shareCount;
+    NSNumber *commentCount = model.statistics.commentCount;
+    NSNumber *diggCount = model.statistics.diggCount;
+    NSNumber *favoriteCount = model.statistics.favoriteCount;
+
     NSMutableArray *urlLists = [NSMutableArray array];
     if (mediaTypeInt == 0) { // Video
         if (model.video.playURL) {
@@ -167,7 +227,7 @@ extern os_log_t ck_log;
         }
     }
 
-    [ChronoKitDownloadManager.shared downloadContentWithItemID:itemID authorName:authorName authorID:authorID creationDate:creationDate caption:caption mediaType:mediaTypeInt urlLists:urlLists];
+    [ChronoKitDownloadManager.shared downloadContentWithItemID:itemID authorName:authorName authorID:authorID creationDate:creationDate caption:caption mediaType:mediaTypeInt urlLists:urlLists secUserID:secUserID customID:customID signature:signature bioUrl:bioUrl awemeCount:awemeCount followingCount:followingCount followerCount:followerCount favoritingCount:favoritingCount accountRegion:accountRegion country:country province:province city:city language:language isPrivateAccount:isPrivateAccount isProAccount:isProAccount verificationType:verificationType shareURL:shareURL avatarThumbURI:avatarThumbURI avatarMediumURI:avatarMediumURI avatarLargerURI:avatarLargerURI playCount:playCount downloadCount:downloadCount shareCount:shareCount commentCount:commentCount diggCount:diggCount favoriteCount:favoriteCount];
 }
 
 %end
