@@ -121,8 +121,8 @@ extension DownloadManager: URLSessionDataDelegate {
 
             let fileManager = FileManager.default
             let vaultURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("ChronoKitVault")
-            let creatorURL = vaultURL.appendingPathComponent(metadata.authorID)
-            let mediaTypeURL = creatorURL.appendingPathComponent(metadata.mediaType == .video ? "Videos" : "Photos")
+            let mediaTypeURL = vaultURL.appendingPathComponent("Media")
+            
             let fileName = UUID().uuidString
             let destinationURL = mediaTypeURL.appendingPathComponent(fileName)
             os_log("Saving encrypted file to: %@", log: ck_log, type: .default, destinationURL.absoluteString)
@@ -130,36 +130,47 @@ extension DownloadManager: URLSessionDataDelegate {
             do {
                 try fileManager.createDirectory(at: mediaTypeURL, withIntermediateDirectories: true, attributes: nil)
                 
-                // Get media properties before encryption
+                let encryptedData = try EncryptionManager.shared.encrypt(data: accumulatedData)
+                try encryptedData.write(to: destinationURL)
+                
+                // Get media properties
                 if metadata.mediaType != .video {
                     if let image = UIImage(data: accumulatedData) {
                         metadata.width = Int(image.size.width * image.scale)
                         metadata.height = Int(image.size.height * image.scale)
                     }
                 } else {
-                    // Save temporary file to extract video metadata
-                    let tempURL = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
-                    try accumulatedData.write(to: tempURL)
-                    let asset = AVURLAsset(url: tempURL)
-                    metadata.duration = CMTimeGetSeconds(asset.duration)
-                    if let track = asset.tracks(withMediaType: .video).first {
-                        let size = track.naturalSize.applying(track.preferredTransform)
-                        metadata.width = Int(abs(size.width))
-                        metadata.height = Int(abs(size.height))
+                    let customURL = URL(string: "encrypted-video://\(UUID().uuidString)")!
+                    let asset = AVURLAsset(url: customURL)
+                    let resourceLoaderDelegate = EncryptedVideoResourceLoader(filePath: "Media/\(fileName)")
+                    let loaderQueue = DispatchQueue(label: "com.chronokit.download.loader")
+                    asset.resourceLoader.setDelegate(resourceLoaderDelegate, queue: loaderQueue)
+                    
+                    let group = DispatchGroup()
+                    group.enter()
+                    
+                    // We must load asynchronously for custom resource loaders to work
+                    asset.loadValuesAsynchronously(forKeys: ["duration", "tracks"]) {
+                        metadata.duration = CMTimeGetSeconds(asset.duration)
+                        if let track = asset.tracks(withMediaType: .video).first {
+                            let size = track.naturalSize.applying(track.preferredTransform)
+                            metadata.width = Int(abs(size.width))
+                            metadata.height = Int(abs(size.height))
+                        }
+                        group.leave()
                     }
-                    try? fileManager.removeItem(at: tempURL)
+                    _ = group.wait(timeout: .now() + 5.0) // Timeout just in case
                 }
 
-                // Encrypt and save
-                let encryptedData = try EncryptionManager.shared.encrypt(data: accumulatedData)
-                try encryptedData.write(to: destinationURL)
-
                 metadata.fileSize = Int64(encryptedData.count)
-                metadata.primaryLocalFilePath = destinationURL.path
+                metadata.primaryLocalFilePath = "Media/\(fileName)"
                 os_log("Successfully saved file to: %@", log: ck_log, type: .default, destinationURL.path)
                 
                 do {
-                    try VaultDatabaseService.shared.saveMetadata(metadata: metadata)
+                    VaultJSONService.shared.saveMetadata(metadata: metadata)
+                    if let authorName = metadata.authorName {
+                        VaultJSONService.shared.saveAuthor(authorID: metadata.authorID, authorName: authorName)
+                    }
                 } catch {
                     os_log("Error saving metadata to database: %@", log: ck_log, type: .error, error.localizedDescription)
                 }

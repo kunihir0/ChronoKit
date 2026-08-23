@@ -56,11 +56,11 @@ public struct VaultCreatorsView: SwiftUI.View {
     
     private func fetchData() {
         do {
-            allItemsCount = try VaultDatabaseService.shared.getTotalMediaCount()
-            creators = try VaultDatabaseService.shared.fetchCreators()
+            allItemsCount = VaultJSONService.shared.getTotalMediaCount()
+            creators = VaultJSONService.shared.fetchCreators()
             
             for creator in creators {
-                creatorCounts[creator.authorID] = (try? VaultDatabaseService.shared.getMediaCount(for: creator.authorID)) ?? 0
+                creatorCounts[creator.authorID] = VaultJSONService.shared.getMediaCount(for: creator.authorID)
             }
         } catch {
             print("Error fetching creators: \(error)")

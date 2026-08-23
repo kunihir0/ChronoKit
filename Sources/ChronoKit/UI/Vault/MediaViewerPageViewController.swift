@@ -290,7 +290,7 @@ class MediaViewerPageViewController: UIPageViewController, UIPageViewControllerD
         HapticFeedbackManager.shared.playImpact(style: .light)
 
         do {
-            try VaultDatabaseService.shared.updateFavoriteStatus(for: item.itemID, isFavorite: item.isFavorite)
+            VaultJSONService.shared.updateFavoriteStatus(for: item.itemID, isFavorite: item.isFavorite)
         } catch {
             // Handle error
             print("Error updating favorite status: \(error)")
@@ -308,7 +308,7 @@ class MediaViewerPageViewController: UIPageViewController, UIPageViewControllerD
     @objc private func shareButtonTapped() {
         let item = mediaItems[currentIndex]
         guard let filePath = item.primaryLocalFilePath else { return }
-        let url = URL(fileURLWithPath: filePath)
+        let url = VaultJSONService.shared.getURL(for: filePath)
         
         do {
             let encryptedData = try Data(contentsOf: url)

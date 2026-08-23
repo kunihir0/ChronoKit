@@ -131,7 +131,7 @@ public struct VaultBrowserView: SwiftUI.View {
     
     private func loadMedia() {
         do {
-            self.media = try VaultDatabaseService.shared.loadMedia(for: self.creatorID)
+            self.media = VaultJSONService.shared.loadMedia(for: self.creatorID)
         } catch {
             print("Error loading media: \(error)")
         }

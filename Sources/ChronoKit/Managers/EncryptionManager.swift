@@ -81,4 +81,12 @@ public class EncryptionManager: NSObject {
         case encryptionFailed
         case keychainStoreFailed(OSStatus)
     }
+
+    public func deleteKey() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassKey,
+            kSecAttrApplicationTag as String: keyTag
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
 }

@@ -14,11 +14,11 @@ class EncryptedVideoResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
     func resourceLoader(_ resourceLoader: AVAssetResourceLoader, shouldWaitForLoadingOfRequestedResource loadingRequest: AVAssetResourceLoadingRequest) -> Bool {
         if decryptedData == nil {
             do {
-                let url = URL(fileURLWithPath: filePath)
+                let url = VaultJSONService.shared.getURL(for: filePath)
                 let encryptedData = try Data(contentsOf: url)
                 decryptedData = try EncryptionManager.shared.decrypt(data: encryptedData)
             } catch {
-                loadingRequest.finishLoading(with: error)
+                print("Resource loader failed: \(error)"); loadingRequest.finishLoading(with: error)
                 return false
             }
         }
@@ -149,7 +149,7 @@ class MediaViewerViewController: UIViewController, UIGestureRecognizerDelegate {
 
     private func setupImageView() {
         guard let filePath = mediaItem.primaryLocalFilePath else { return }
-        let url = URL(fileURLWithPath: filePath)
+        let url = VaultJSONService.shared.getURL(for: filePath)
         do {
             let encryptedData = try Data(contentsOf: url)
             let data = try EncryptionManager.shared.decrypt(data: encryptedData)
@@ -172,7 +172,7 @@ class MediaViewerViewController: UIViewController, UIGestureRecognizerDelegate {
         let asset = AVURLAsset(url: customURL)
         
         resourceLoaderDelegate = EncryptedVideoResourceLoader(filePath: filePath)
-        asset.resourceLoader.setDelegate(resourceLoaderDelegate, queue: DispatchQueue.main)
+        let loaderQueue = DispatchQueue(label: "com.chronokit.resourceloader"); asset.resourceLoader.setDelegate(resourceLoaderDelegate, queue: loaderQueue)
         
         let playerItem = AVPlayerItem(asset: asset)
 

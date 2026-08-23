@@ -145,7 +145,7 @@ public struct SettingsView: SwiftUI.View {
                         title: Text("Clear All Data?"),
                         message: Text("This will permanently delete all downloaded videos, photos, the encrypted database, and the encryption keys. This action cannot be undone. TikTok will restart immediately."),
                         primaryButton: .destructive(Text("Delete Everything")) {
-                            VaultDatabaseService.wipeAllData()
+                            VaultJSONService.wipeAllData()
                             exit(0)
                         },
                         secondaryButton: .cancel()

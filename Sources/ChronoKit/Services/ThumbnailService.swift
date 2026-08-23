@@ -1,13 +1,22 @@
+import Foundation
 import UIKit
 import AVFoundation
 import os.log
 
 public class ThumbnailService {
-
     public static let shared = ThumbnailService()
     private let cache = NSCache<NSString, UIImage>()
-
-    private init() {}
+    
+    // Limit concurrency to 2 threads
+    private let queue = OperationQueue()
+    
+    // Hold strong references to resource loaders while generating thumbnails
+    private var activeLoaders: [String: EncryptedVideoResourceLoader] = [:]
+    private let loadersLock = NSLock()
+    
+    private init() {
+        queue.maxConcurrentOperationCount = 2
+    }
 
     public func getThumbnail(for metadata: MediaMetadata, completion: @escaping (UIImage?) -> Void) {
         if let cachedImage = cache.object(forKey: metadata.itemID as NSString) {
@@ -15,13 +24,13 @@ public class ThumbnailService {
             return
         }
 
-        DispatchQueue.global(qos: .userInitiated).async {
+        queue.addOperation {
             var thumbnail: UIImage?
             if let path = metadata.primaryLocalFilePath {
-                let url = URL(fileURLWithPath: path)
                 if metadata.mediaType == .video {
-                    thumbnail = self.generateVideoThumbnail(from: url)
+                    thumbnail = self.generateVideoThumbnail(forPath: path)
                 } else {
+                    let url = VaultJSONService.shared.getURL(for: path)
                     thumbnail = self.generateImageThumbnail(from: url)
                 }
             }
@@ -36,27 +45,33 @@ public class ThumbnailService {
         }
     }
 
-    private func generateVideoThumbnail(from url: URL) -> UIImage? {
+    private func generateVideoThumbnail(forPath filePath: String) -> UIImage? {
+        let customURL = URL(string: "encrypted-video://\(UUID().uuidString)")!
+        let asset = AVURLAsset(url: customURL)
+        
+        let resourceLoaderDelegate = EncryptedVideoResourceLoader(filePath: filePath)
+        let loaderQueue = DispatchQueue(label: "com.chronokit.thumbnail.loader")
+        asset.resourceLoader.setDelegate(resourceLoaderDelegate, queue: loaderQueue)
+        
+        let loaderID = UUID().uuidString
+        loadersLock.lock()
+        activeLoaders[loaderID] = resourceLoaderDelegate
+        loadersLock.unlock()
+        
+        defer {
+            loadersLock.lock()
+            activeLoaders.removeValue(forKey: loaderID)
+            loadersLock.unlock()
+        }
+        
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        
         do {
-            let encryptedData = try Data(contentsOf: url)
-            let decryptedData = try EncryptionManager.shared.decrypt(data: encryptedData)
-            
-            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("mp4")
-            try decryptedData.write(to: tempURL)
-            defer { try? FileManager.default.removeItem(at: tempURL) }
-            
-            let asset = AVAsset(url: tempURL)
-            let generator = AVAssetImageGenerator(asset: asset)
-            generator.appliesPreferredTrackTransform = true
-            
-            let duration = asset.duration
-            let durationInSeconds = CMTimeGetSeconds(duration)
-            let timestamp = CMTime(seconds: durationInSeconds * 0.1, preferredTimescale: 60)
-            
+            let timestamp = CMTime(seconds: 0.1, preferredTimescale: 60)
             let imageRef = try generator.copyCGImage(at: timestamp, actualTime: nil)
             return UIImage(cgImage: imageRef)
         } catch {
-            os_log("Error generating video thumbnail: %@", log: ck_log, type: .error, error.localizedDescription)
             return nil
         }
     }
@@ -65,13 +80,8 @@ public class ThumbnailService {
         do {
             let encryptedData = try Data(contentsOf: url)
             let data = try EncryptionManager.shared.decrypt(data: encryptedData)
-            let image = UIImage(data: data)
-            if image == nil {
-                os_log("Error: UIImage(data:) returned nil for %@", log: ck_log, type: .error, url.absoluteString)
-            }
-            return image
+            return UIImage(data: data)
         } catch {
-            os_log("Error loading image data: %@", log: ck_log, type: .error, error.localizedDescription)
             return nil
         }
     }
