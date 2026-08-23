@@ -2,6 +2,64 @@
 import UIKit
 import AVKit
 
+class EncryptedVideoResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
+    let filePath: String
+    private var decryptedData: Data?
+
+    init(filePath: String) {
+        self.filePath = filePath
+        super.init()
+    }
+
+    func resourceLoader(_ resourceLoader: AVAssetResourceLoader, shouldWaitForLoadingOfRequestedResource loadingRequest: AVAssetResourceLoadingRequest) -> Bool {
+        if decryptedData == nil {
+            do {
+                let url = URL(fileURLWithPath: filePath)
+                let encryptedData = try Data(contentsOf: url)
+                decryptedData = try EncryptionManager.shared.decrypt(data: encryptedData)
+            } catch {
+                loadingRequest.finishLoading(with: error)
+                return false
+            }
+        }
+
+        guard let data = decryptedData else {
+            loadingRequest.finishLoading(with: NSError(domain: "EncryptedVideoResourceLoader", code: -1, userInfo: nil))
+            return false
+        }
+
+        if let infoRequest = loadingRequest.contentInformationRequest {
+            infoRequest.isByteRangeAccessSupported = true
+            infoRequest.contentType = "public.mpeg-4"
+            infoRequest.contentLength = Int64(data.count)
+        }
+
+        if let dataRequest = loadingRequest.dataRequest {
+            let requestedOffset = Int(dataRequest.requestedOffset)
+            let requestedLength = dataRequest.requestedLength
+            let currentOffset = Int(dataRequest.currentOffset)
+
+            if currentOffset < data.count {
+                let bytesRemaining = data.count - currentOffset
+                let bytesRequested = requestedOffset + requestedLength - currentOffset
+                let bytesToRespond = min(bytesRemaining, bytesRequested)
+
+                if bytesToRespond > 0 {
+                    let subdata = data.subdata(in: currentOffset..<(currentOffset + bytesToRespond))
+                    dataRequest.respond(with: subdata)
+                }
+            }
+            
+            if Int(dataRequest.currentOffset) >= requestedOffset + requestedLength || Int(dataRequest.currentOffset) >= data.count {
+                loadingRequest.finishLoading()
+            }
+        } else {
+            loadingRequest.finishLoading()
+        }
+        return true
+    }
+}
+
 class MediaViewerViewController: UIViewController, UIGestureRecognizerDelegate {
 
     let mediaItem: MediaMetadata
@@ -9,6 +67,7 @@ class MediaViewerViewController: UIViewController, UIGestureRecognizerDelegate {
     private var playerLooper: AVPlayerLooper?
     private var playerLayer: AVPlayerLayer?
     private var imageView: UIImageView?
+    private var resourceLoaderDelegate: EncryptedVideoResourceLoader?
 
     // Properties for scrubbing
     private var isScrubbing = false
@@ -89,19 +148,33 @@ class MediaViewerViewController: UIViewController, UIGestureRecognizerDelegate {
     }
 
     private func setupImageView() {
-        guard let filePath = mediaItem.primaryLocalFilePath, let image = UIImage(contentsOfFile: filePath) else { return }
-        let imageView = UIImageView(image: image)
-        imageView.contentMode = .scaleAspectFit
-        imageView.frame = view.bounds
-        imageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        view.addSubview(imageView)
-        self.imageView = imageView
+        guard let filePath = mediaItem.primaryLocalFilePath else { return }
+        let url = URL(fileURLWithPath: filePath)
+        do {
+            let encryptedData = try Data(contentsOf: url)
+            let data = try EncryptionManager.shared.decrypt(data: encryptedData)
+            guard let image = UIImage(data: data) else { return }
+            let imageView = UIImageView(image: image)
+            imageView.contentMode = .scaleAspectFit
+            imageView.frame = view.bounds
+            imageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            view.addSubview(imageView)
+            self.imageView = imageView
+        } catch {
+            print("Error decrypting image: \(error)")
+        }
     }
 
     private func setupVideoPlayer() {
         guard let filePath = mediaItem.primaryLocalFilePath else { return }
-        let videoURL = URL(fileURLWithPath: filePath)
-        let playerItem = AVPlayerItem(url: videoURL)
+        
+        let customURL = URL(string: "encrypted-video://\(UUID().uuidString)")!
+        let asset = AVURLAsset(url: customURL)
+        
+        resourceLoaderDelegate = EncryptedVideoResourceLoader(filePath: filePath)
+        asset.resourceLoader.setDelegate(resourceLoaderDelegate, queue: DispatchQueue.main)
+        
+        let playerItem = AVPlayerItem(asset: asset)
 
         player = AVQueuePlayer(playerItem: playerItem)
         playerLayer = AVPlayerLayer(player: player)

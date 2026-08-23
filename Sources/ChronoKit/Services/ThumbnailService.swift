@@ -37,15 +37,22 @@ public class ThumbnailService {
     }
 
     private func generateVideoThumbnail(from url: URL) -> UIImage? {
-        let asset = AVAsset(url: url)
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        
-        let duration = asset.duration
-        let durationInSeconds = CMTimeGetSeconds(duration)
-        let timestamp = CMTime(seconds: durationInSeconds * 0.1, preferredTimescale: 60) // 10% into the video
-
         do {
+            let encryptedData = try Data(contentsOf: url)
+            let decryptedData = try EncryptionManager.shared.decrypt(data: encryptedData)
+            
+            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("mp4")
+            try decryptedData.write(to: tempURL)
+            defer { try? FileManager.default.removeItem(at: tempURL) }
+            
+            let asset = AVAsset(url: tempURL)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            
+            let duration = asset.duration
+            let durationInSeconds = CMTimeGetSeconds(duration)
+            let timestamp = CMTime(seconds: durationInSeconds * 0.1, preferredTimescale: 60)
+            
             let imageRef = try generator.copyCGImage(at: timestamp, actualTime: nil)
             return UIImage(cgImage: imageRef)
         } catch {
@@ -56,7 +63,8 @@ public class ThumbnailService {
 
     private func generateImageThumbnail(from url: URL) -> UIImage? {
         do {
-            let data = try Data(contentsOf: url)
+            let encryptedData = try Data(contentsOf: url)
+            let data = try EncryptionManager.shared.decrypt(data: encryptedData)
             let image = UIImage(data: data)
             if image == nil {
                 os_log("Error: UIImage(data:) returned nil for %@", log: ck_log, type: .error, url.absoluteString)

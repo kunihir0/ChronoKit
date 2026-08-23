@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 public class VaultDatabaseService {
 
@@ -93,6 +94,9 @@ public class VaultDatabaseService {
             let dbPath = vaultURL.appendingPathComponent("chronokit.sqlite3").path
             db = try Connection(dbPath)
             try createTables()
+            
+            // Automatically migrate legacy files to the new encrypted format
+            migrateLegacyFiles()
         } catch {
             db = nil
             print("Error initializing database: \(error)")
@@ -452,5 +456,201 @@ public class VaultDatabaseService {
             allMetadata.append(metadata)
         }
         return allMetadata
+    }
+
+    public static func wipeAllData() {
+        let fileManager = FileManager.default
+        if let documentsDirectory = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first {
+            let vaultURL = documentsDirectory.appendingPathComponent("ChronoKitVault")
+            do {
+                try fileManager.removeItem(at: vaultURL)
+            } catch {
+                print("Error wiping vault: \(error)")
+            }
+        }
+        
+        // Also wipe encryption key
+        let keyTag = "com.chronokit.encryption.key".data(using: .utf8)!
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassKey,
+            kSecAttrApplicationTag as String: keyTag
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+
+    private func migrateLegacyFiles() {
+        guard let db = db else { return }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            let fileManager = FileManager.default
+            let vaultURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("ChronoKitVault")
+            
+            guard fileManager.fileExists(atPath: vaultURL.path) else { return }
+            
+            let enumerator = fileManager.enumerator(at: vaultURL, includingPropertiesForKeys: nil)
+            var filesToMigrate: [URL] = []
+            var filesToRecover: [URL] = []
+            
+            while let fileURL = enumerator?.nextObject() as? URL {
+                if fileURL.hasDirectoryPath { continue }
+                if fileURL.lastPathComponent.contains("sqlite") { continue }
+                if fileURL.lastPathComponent.contains(".DS_Store") { continue }
+                
+                let ext = fileURL.pathExtension.lowercased()
+                if ext == "mp4" || ext == "jpeg" || ext == "jpg" || ext == "heic" || ext == "png" {
+                    filesToMigrate.append(fileURL)
+                } else if ext == "" {
+                    let relativePath = fileURL.resolvingSymlinksInPath().path.replacingOccurrences(of: vaultURL.resolvingSymlinksInPath().path, with: "")
+                    var normalizedPath = relativePath
+                    if !normalizedPath.hasPrefix("/") {
+                        normalizedPath = "/" + normalizedPath
+                    }
+                    // Check if this path is in the DB
+                    do {
+                        let query = self.mediaMetadata.filter(self.primaryLocalFilePath == normalizedPath)
+                        if try db.pluck(query) == nil {
+                            // It's an orphaned encrypted file!
+                            filesToRecover.append(fileURL)
+                        }
+                    } catch {}
+                }
+            }
+            
+            if filesToMigrate.isEmpty && filesToRecover.isEmpty { return }
+            
+            DispatchQueue.main.async {
+                if let scene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
+                   let rootVC = scene.windows.first?.rootViewController {
+                    
+                    let total = filesToMigrate.count + filesToRecover.count
+                    let alert = UIAlertController(title: "Migrating Vault", message: "Securing legacy data... (0/\(total))\nPlease do not close the app.", preferredStyle: .alert)
+                    
+                    var topController = rootVC
+                    while let presented = topController.presentedViewController {
+                        topController = presented
+                    }
+                    topController.present(alert, animated: true, completion: nil)
+                    
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        self.performMigration(files: filesToMigrate, recoveredFiles: filesToRecover, vaultURL: vaultURL, alert: alert, db: db)
+                    }
+                } else {
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        self.performMigration(files: filesToMigrate, recoveredFiles: filesToRecover, vaultURL: vaultURL, alert: nil, db: db)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func performMigration(files: [URL], recoveredFiles: [URL], vaultURL: URL, alert: UIAlertController?, db: Connection) {
+        let fileManager = FileManager.default
+        let totalFiles = files.count + recoveredFiles.count
+        var migratedCount = 0
+        var processedCount = 0
+        
+        let processItem = { (fileURL: URL, isRecovered: Bool) in
+            let relativePath = fileURL.resolvingSymlinksInPath().path.replacingOccurrences(of: vaultURL.resolvingSymlinksInPath().path, with: "")
+            let relativeComponents = relativePath.components(separatedBy: "/").filter { !$0.isEmpty }
+            
+            if relativeComponents.count >= 3 {
+                let authorID = relativeComponents[0]
+                let mediaFolder = relativeComponents[1]
+                let fileName = relativeComponents[2]
+                
+                do {
+                    var newRelativePath = ""
+                    var itemID = ""
+                    
+                    if !isRecovered {
+                        let data = try Data(contentsOf: fileURL)
+                        let encryptedData = try EncryptionManager.shared.encrypt(data: data)
+                        
+                        let newFileName = UUID().uuidString
+                        let newFullPathURL = fileURL.deletingLastPathComponent().appendingPathComponent(newFileName)
+                        
+                        newRelativePath = newFullPathURL.resolvingSymlinksInPath().path.replacingOccurrences(of: vaultURL.resolvingSymlinksInPath().path, with: "")
+                        if !newRelativePath.hasPrefix("/") {
+                            newRelativePath = "/" + newRelativePath
+                        }
+                        
+                        try encryptedData.write(to: newFullPathURL, options: .atomic)
+                        try fileManager.removeItem(at: fileURL)
+                        
+                        itemID = fileName.components(separatedBy: "-").first ?? UUID().uuidString
+                    } else {
+                        // Already encrypted and extensionless
+                        newRelativePath = relativePath
+                        if !newRelativePath.hasPrefix("/") {
+                            newRelativePath = "/" + newRelativePath
+                        }
+                        itemID = UUID().uuidString // Since we don't know the itemID, we assign a new UUID so it doesn't conflict
+                    }
+                    
+                    let itemQuery = self.mediaMetadata.filter(self.itemID == itemID)
+                    if let _ = try db.pluck(itemQuery) {
+                        try db.run(itemQuery.update(self.primaryLocalFilePath <- newRelativePath))
+                    } else {
+                        let mediaTypeInt = mediaFolder == "Videos" ? MediaType.video.rawValue : MediaType.photoAlbum.rawValue
+                        let authorQuery = self.authors.filter(self.author_id == authorID)
+                        if try db.pluck(authorQuery) == nil {
+                            try db.run(self.authors.insert(or: .ignore,
+                                self.author_id <- authorID,
+                                self.author_name <- "Recovered Author"
+                            ))
+                        }
+                        
+                        let insert = self.mediaMetadata.insert(or: .replace,
+                            self.itemID <- itemID,
+                            self.authorID <- authorID,
+                            self.creationDate <- Date(),
+                            self.downloadDate <- Date(),
+                            self.caption <- "Recovered File",
+                            self.mediaType <- mediaTypeInt,
+                            self.primaryLocalFilePath <- newRelativePath
+                        )
+                        let rowid = try db.run(insert)
+                        
+                        try db.run(self.statistics.insert(or: .replace,
+                            self.media_id <- rowid,
+                            self.isFavorite <- false,
+                            self.width <- 0,
+                            self.height <- 0,
+                            self.duration <- 0,
+                            self.fileSize <- 0
+                        ))
+                    }
+                    migratedCount += 1
+                } catch {
+                    print("Migration error for \(fileURL.path): \(error)")
+                }
+            }
+            
+            processedCount += 1
+            if let alert = alert {
+                DispatchQueue.main.async {
+                    alert.message = "Securing legacy data... (\(processedCount)/\(totalFiles))\nPlease do not close the app."
+                }
+            }
+        }
+        
+        for fileURL in files {
+            processItem(fileURL, false)
+        }
+        for fileURL in recoveredFiles {
+            processItem(fileURL, true)
+        }
+        
+        if let alert = alert {
+            DispatchQueue.main.async {
+                alert.presentingViewController?.dismiss(animated: true, completion: nil)
+            }
+        }
+        
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: NSNotification.Name("ChronoKitVaultDidMigrate"), object: nil)
+        }
+        
+        print("Successfully migrated/recovered \(migratedCount) legacy files to encrypted vault.")
     }
 }

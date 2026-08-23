@@ -49,6 +49,9 @@ public struct VaultCreatorsView: SwiftUI.View {
         .onAppear {
             fetchData()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ChronoKitVaultDidMigrate"))) { _ in
+            fetchData()
+        }
     }
     
     private func fetchData() {
@@ -72,6 +75,7 @@ public class VaultCreatorsViewController: UIViewController {
         super.viewDidLoad()
         self.view.backgroundColor = .systemGroupedBackground
         
+
         var creatorsView = VaultCreatorsView()
         creatorsView.pushBrowser = { [weak self] creatorID, title in
             let browserVC = VaultBrowserViewController(creatorID: creatorID)

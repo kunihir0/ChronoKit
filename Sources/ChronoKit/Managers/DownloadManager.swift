@@ -10,6 +10,7 @@ public class DownloadManager: NSObject {
 
     private var urlSession: URLSession!
     private var activeDownloads: [Int: MediaMetadata] = [:]
+    private var activeDataTasks: [Int: Data] = [:]
     private var downloadQueue: [(url: URL, metadata: MediaMetadata)] = []
     private var isDownloading = false
     private var totalDownloadsInBatch = 0
@@ -17,7 +18,7 @@ public class DownloadManager: NSObject {
 
     private override init() {
         super.init()
-        let configuration = URLSessionConfiguration.background(withIdentifier: "com.ChronoKit.downloadManager")
+        let configuration = URLSessionConfiguration.ephemeral
         self.urlSession = URLSession(configuration: configuration, delegate: self, delegateQueue: OperationQueue.main)
     }
 
@@ -52,7 +53,7 @@ public class DownloadManager: NSObject {
         let (url, metadata) = downloadQueue.removeFirst()
 
         os_log("Starting download from queue: %@", log: ck_log, type: .default, url.absoluteString)
-        let task = self.urlSession.downloadTask(with: url)
+        let task = self.urlSession.dataTask(with: url)
         self.activeDownloads[task.taskIdentifier] = metadata
         
         DispatchQueue.main.async {
@@ -61,156 +62,41 @@ public class DownloadManager: NSObject {
         }
         
         task.resume()
-        os_log("Started download task with identifier: %d", log: ck_log, type: .default, task.taskIdentifier)
-    }
-    
-    private func fileExtension(for mimeType: String) -> String {
-        switch mimeType {
-        case "image/jpeg":
-            return "jpeg"
-        case "image/png":
-            return "png"
-        case "image/webp":
-            return "webp"
-        case "image/heic":
-            return "heic"
-        case "image/vvic":
-            return "vvic"
-        case "video/mp4":
-            return "mp4"
-        default:
-            // Fallback to jpeg for unknown image types, or mp4 for others
-            if mimeType.hasPrefix("image/") {
-                return "jpeg"
-            } else {
-                return "mp4"
-            }
-        }
+        os_log("Started data task with identifier: %d", log: ck_log, type: .default, task.taskIdentifier)
     }
 }
 
-extension DownloadManager: URLSessionDownloadDelegate {
-    public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        os_log("[VERBOSE] didFinishDownloadingTo: total=%d, completed=%d, queue=%d, active=%d", log: ck_log, type: .default, self.totalDownloadsInBatch, self.completedDownloadsCount, self.downloadQueue.count, self.activeDownloads.count)
-        guard let metadata = self.activeDownloads.removeValue(forKey: downloadTask.taskIdentifier) else {
-            os_log("Error: Could not find metadata for download task %d", log: ck_log, type: .error, downloadTask.taskIdentifier)
+extension DownloadManager: URLSessionDataDelegate {
+    public func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        if activeDataTasks[dataTask.taskIdentifier] != nil {
+            activeDataTasks[dataTask.taskIdentifier]?.append(data)
+        } else {
+            activeDataTasks[dataTask.taskIdentifier] = data
+        }
+        
+        let totalBytesWritten = dataTask.countOfBytesReceived
+        let totalBytesExpectedToWrite = dataTask.countOfBytesExpectedToReceive
+        if totalBytesExpectedToWrite > 0 {
+            let progress = Float(totalBytesWritten) / Float(totalBytesExpectedToWrite)
+            let status = "Downloading \(completedDownloadsCount + 1) of \(totalDownloadsInBatch)..."
+            DispatchQueue.main.async {
+                DownloadUIManager.shared.updateProgress(progress)
+                DownloadUIManager.shared.updateStatus(status)
+            }
+        }
+    }
+
+    public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        let accumulatedData = self.activeDataTasks.removeValue(forKey: task.taskIdentifier) ?? Data()
+        guard let metadata = self.activeDownloads.removeValue(forKey: task.taskIdentifier) else {
+            os_log("Error: Could not find metadata for task %d", log: ck_log, type: .error, task.taskIdentifier)
             isDownloading = false
             processQueue()
             return
         }
 
-        completedDownloadsCount += 1
-
-        var fileExtension = "tmp"
-        if let response = downloadTask.response as? HTTPURLResponse {
-            if UserDefaults.standard.bool(forKey: "log_all_headers") {
-                let logMessage = "Headers for URL: \(downloadTask.originalRequest?.url?.absoluteString ?? "N/A")\n\(response.allHeaderFields.description)"
-                FileLogger.shared.log(logMessage)
-            }
-            if let mimeType = response.allHeaderFields["Content-Type"] as? String {
-                fileExtension = self.fileExtension(for: mimeType)
-                os_log("Determined file extension '%@' from MIME type '%@'", log: ck_log, type: .default, fileExtension, mimeType)
-            }
-        } else {
-            os_log("Could not determine MIME type, using temporary extension.", log: ck_log, type: .error)
-        }
-
-        let fileManager = FileManager.default
-        let vaultURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("ChronoKitVault")
-        let creatorURL = vaultURL.appendingPathComponent(metadata.authorID)
-        let mediaTypeURL = creatorURL.appendingPathComponent(metadata.mediaType == .video ? "Videos" : "Photos")
-        let fileName = "\(metadata.itemID)-\(UUID().uuidString).\(fileExtension)"
-        let destinationURL = mediaTypeURL.appendingPathComponent(fileName)
-        os_log("Moving file to: %@", log: ck_log, type: .default, destinationURL.absoluteString)
-
-        do {
-            try fileManager.createDirectory(at: mediaTypeURL, withIntermediateDirectories: true, attributes: nil)
-            try fileManager.moveItem(at: location, to: destinationURL)
-
-            // Get file attributes and media properties
-            do {
-                let fileAttributes = try FileManager.default.attributesOfItem(atPath: destinationURL.path)
-                if let size = fileAttributes[.size] as? NSNumber {
-                    metadata.fileSize = size.int64Value
-                }
-            } catch {
-                os_log("Error getting file size: %@", log: ck_log, type: .error, error.localizedDescription)
-            }
-
-            if metadata.mediaType == .video {
-                let asset = AVURLAsset(url: destinationURL)
-                metadata.duration = CMTimeGetSeconds(asset.duration)
-                if let track = asset.tracks(withMediaType: .video).first {
-                    let size = track.naturalSize.applying(track.preferredTransform)
-                    metadata.width = Int(abs(size.width))
-                    metadata.height = Int(abs(size.height))
-                }
-            } else { // Photo
-                if let image = UIImage(contentsOfFile: destinationURL.path) {
-                    metadata.width = Int(image.size.width * image.scale)
-                    metadata.height = Int(image.size.height * image.scale)
-                }
-            }
-
-            metadata.primaryLocalFilePath = destinationURL.path
-            os_log("Successfully saved file to: %@", log: ck_log, type: .default, destinationURL.path)
-            do {
-                try VaultDatabaseService.shared.saveMetadata(metadata: metadata)
-            } catch {
-                os_log("Error saving metadata to database: %@", log: ck_log, type: .error, error.localizedDescription)
-            }
-
-            // Debug: Save a copy of the downloaded image
-            if metadata.mediaType != .video {
-                let debugURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("debug")
-                try? fileManager.createDirectory(at: debugURL, withIntermediateDirectories: true, attributes: nil)
-                let debugFileURL = debugURL.appendingPathComponent("last_downloaded_image.\(fileExtension)")
-                if fileManager.fileExists(atPath: debugFileURL.path) {
-                    try? fileManager.removeItem(at: debugFileURL)
-                }
-                try? fileManager.copyItem(at: destinationURL, to: debugFileURL)
-                os_log("Saved a debug copy of the image to %@", log: ck_log, type: .default, debugFileURL.path)
-            }
-            
-            DispatchQueue.main.async {
-                HapticFeedbackManager.shared.playSuccess()
-                if self.downloadQueue.isEmpty && self.activeDownloads.isEmpty {
-                    os_log("[VERBOSE] Resetting counters in didFinishDownloadingTo", log: ck_log, type: .default)
-                    DownloadUIManager.shared.hideProgressView()
-                    self.totalDownloadsInBatch = 0
-                    self.completedDownloadsCount = 0
-                }
-            }
-        } catch {
-            os_log("Error moving file: %@", log: ck_log, type: .error, error.localizedDescription)
-            DispatchQueue.main.async {
-                HapticFeedbackManager.shared.playError()
-                if self.downloadQueue.isEmpty && self.activeDownloads.isEmpty {
-                    os_log("[VERBOSE] Resetting counters in didFinishDownloadingTo (catch block)", log: ck_log, type: .default)
-                    DownloadUIManager.shared.hideProgressView()
-                    self.totalDownloadsInBatch = 0
-                    self.completedDownloadsCount = 0
-                }
-            }
-        }
-        
-        isDownloading = false
-        processQueue()
-    }
-
-    public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-        let progress = Float(totalBytesWritten) / Float(totalBytesExpectedToWrite)
-        let status = "Downloading \(completedDownloadsCount + 1) of \(totalDownloadsInBatch)..."
-        DispatchQueue.main.async {
-            DownloadUIManager.shared.updateProgress(progress)
-            DownloadUIManager.shared.updateStatus(status)
-        }
-    }
-
-    public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         if let error = error {
             os_log("[VERBOSE] didCompleteWithError (with error): %@, total=%d, completed=%d, queue=%d, active=%d", log: ck_log, type: .default, error.localizedDescription, self.totalDownloadsInBatch, self.completedDownloadsCount, self.downloadQueue.count, self.activeDownloads.count)
-            _ = self.activeDownloads.removeValue(forKey: task.taskIdentifier)
             
             DispatchQueue.main.async {
                 HapticFeedbackManager.shared.playError()
@@ -223,6 +109,83 @@ extension DownloadManager: URLSessionDownloadDelegate {
             }
         } else {
             os_log("[VERBOSE] didCompleteWithError (success): total=%d, completed=%d, queue=%d, active=%d", log: ck_log, type: .default, self.totalDownloadsInBatch, self.completedDownloadsCount, self.downloadQueue.count, self.activeDownloads.count)
+            
+            completedDownloadsCount += 1
+
+            if let response = task.response as? HTTPURLResponse {
+                if UserDefaults.standard.bool(forKey: "log_all_headers") {
+                    let logMessage = "Headers for URL: \(task.originalRequest?.url?.absoluteString ?? "N/A")\n\(response.allHeaderFields.description)"
+                    FileLogger.shared.log(logMessage)
+                }
+            }
+
+            let fileManager = FileManager.default
+            let vaultURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("ChronoKitVault")
+            let creatorURL = vaultURL.appendingPathComponent(metadata.authorID)
+            let mediaTypeURL = creatorURL.appendingPathComponent(metadata.mediaType == .video ? "Videos" : "Photos")
+            let fileName = UUID().uuidString
+            let destinationURL = mediaTypeURL.appendingPathComponent(fileName)
+            os_log("Saving encrypted file to: %@", log: ck_log, type: .default, destinationURL.absoluteString)
+
+            do {
+                try fileManager.createDirectory(at: mediaTypeURL, withIntermediateDirectories: true, attributes: nil)
+                
+                // Get media properties before encryption
+                if metadata.mediaType != .video {
+                    if let image = UIImage(data: accumulatedData) {
+                        metadata.width = Int(image.size.width * image.scale)
+                        metadata.height = Int(image.size.height * image.scale)
+                    }
+                } else {
+                    // Save temporary file to extract video metadata
+                    let tempURL = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
+                    try accumulatedData.write(to: tempURL)
+                    let asset = AVURLAsset(url: tempURL)
+                    metadata.duration = CMTimeGetSeconds(asset.duration)
+                    if let track = asset.tracks(withMediaType: .video).first {
+                        let size = track.naturalSize.applying(track.preferredTransform)
+                        metadata.width = Int(abs(size.width))
+                        metadata.height = Int(abs(size.height))
+                    }
+                    try? fileManager.removeItem(at: tempURL)
+                }
+
+                // Encrypt and save
+                let encryptedData = try EncryptionManager.shared.encrypt(data: accumulatedData)
+                try encryptedData.write(to: destinationURL)
+
+                metadata.fileSize = Int64(encryptedData.count)
+                metadata.primaryLocalFilePath = destinationURL.path
+                os_log("Successfully saved file to: %@", log: ck_log, type: .default, destinationURL.path)
+                
+                do {
+                    try VaultDatabaseService.shared.saveMetadata(metadata: metadata)
+                } catch {
+                    os_log("Error saving metadata to database: %@", log: ck_log, type: .error, error.localizedDescription)
+                }
+
+
+                DispatchQueue.main.async {
+                    HapticFeedbackManager.shared.playSuccess()
+                    if self.downloadQueue.isEmpty && self.activeDownloads.isEmpty {
+                        os_log("[VERBOSE] Resetting counters in didCompleteWithError", log: ck_log, type: .default)
+                        DownloadUIManager.shared.hideProgressView()
+                        self.totalDownloadsInBatch = 0
+                        self.completedDownloadsCount = 0
+                    }
+                }
+            } catch {
+                os_log("Error processing/encrypting file: %@", log: ck_log, type: .error, error.localizedDescription)
+                DispatchQueue.main.async {
+                    HapticFeedbackManager.shared.playError()
+                    if self.downloadQueue.isEmpty && self.activeDownloads.isEmpty {
+                        os_log("[VERBOSE] Resetting counters in catch block", log: ck_log, type: .default)
+                        DownloadUIManager.shared.hideProgressView()
+                        self.totalDownloadsInBatch = 0
+                        self.completedDownloadsCount = 0
+                    }
+                }
+            }
         }
         
         isDownloading = false

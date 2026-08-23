@@ -11,6 +11,7 @@ class MediaViewerPageViewController: UIPageViewController, UIPageViewControllerD
     private var abRepeatButton: UIButton!
     private var heartButton: UIButton!
     private var infoButton: UIButton!
+    private var shareButton: UIButton!
     private var infoView: VaultItemInfoView!
 
     init(mediaItems: [MediaMetadata], initialIndex: Int) {
@@ -239,9 +240,15 @@ class MediaViewerPageViewController: UIPageViewController, UIPageViewControllerD
         infoButton.tintColor = .white
         infoButton.addTarget(self, action: #selector(infoButtonTapped), for: .touchUpInside)
 
+        shareButton = UIButton(type: .system)
+        shareButton.setImage(UIImage(systemName: "square.and.arrow.up"), for: .normal)
+        shareButton.tintColor = .white
+        shareButton.addTarget(self, action: #selector(shareButtonTapped), for: .touchUpInside)
+
         stackView.addArrangedSubview(abRepeatButton)
         stackView.addArrangedSubview(heartButton)
         stackView.addArrangedSubview(infoButton)
+        stackView.addArrangedSubview(shareButton)
 
         rightSideBarView.addSubview(stackView)
 
@@ -262,7 +269,10 @@ class MediaViewerPageViewController: UIPageViewController, UIPageViewControllerD
             heartButton.heightAnchor.constraint(equalToConstant: 44),
 
             infoButton.widthAnchor.constraint(equalToConstant: 44),
-            infoButton.heightAnchor.constraint(equalToConstant: 44)
+            infoButton.heightAnchor.constraint(equalToConstant: 44),
+
+            shareButton.widthAnchor.constraint(equalToConstant: 44),
+            shareButton.heightAnchor.constraint(equalToConstant: 44)
         ])
     }
 
@@ -293,6 +303,37 @@ class MediaViewerPageViewController: UIPageViewController, UIPageViewControllerD
 
     @objc private func infoButtonTapped() {
         infoView.isHidden.toggle()
+    }
+
+    @objc private func shareButtonTapped() {
+        let item = mediaItems[currentIndex]
+        guard let filePath = item.primaryLocalFilePath else { return }
+        let url = URL(fileURLWithPath: filePath)
+        
+        do {
+            let encryptedData = try Data(contentsOf: url)
+            let decryptedData = try EncryptionManager.shared.decrypt(data: encryptedData)
+            
+            let ext = item.mediaType == .video ? "mp4" : "jpg"
+            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(item.itemID).appendingPathExtension(ext)
+            
+            try decryptedData.write(to: tempURL)
+            
+            let activityVC = UIActivityViewController(activityItems: [tempURL], applicationActivities: nil)
+            
+            if let popover = activityVC.popoverPresentationController {
+                popover.sourceView = shareButton
+            }
+            
+            activityVC.completionWithItemsHandler = { (activityType, completed, returnedItems, activityError) in
+                try? FileManager.default.removeItem(at: tempURL)
+            }
+            
+            present(activityVC, animated: true, completion: nil)
+            
+        } catch {
+            print("Error decrypting for share: \(error)")
+        }
     }
 
     // MARK: - Pan to Dismiss

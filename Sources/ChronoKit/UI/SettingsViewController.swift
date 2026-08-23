@@ -12,6 +12,7 @@ public struct SettingsView: SwiftUI.View {
     @AppStorage("log_all_headers") private var logAllHeaders: Bool = false
     
     @State private var showRestartAlert = false
+    @State private var showClearDataAlert = false
     
     public var body: some SwiftUI.View {
         List {
@@ -129,6 +130,27 @@ public struct SettingsView: SwiftUI.View {
                     }
                 }
                 .foregroundColor(.primary)
+            }
+            
+            Section(header: Text("Data Management")) {
+                Button(role: .destructive, action: {
+                    showClearDataAlert = true
+                }) {
+                    HStack {
+                        Label("Clear Vault Data", systemImage: "trash.fill")
+                    }
+                }
+                .alert(isPresented: $showClearDataAlert) {
+                    Alert(
+                        title: Text("Clear All Data?"),
+                        message: Text("This will permanently delete all downloaded videos, photos, the encrypted database, and the encryption keys. This action cannot be undone. TikTok will restart immediately."),
+                        primaryButton: .destructive(Text("Delete Everything")) {
+                            VaultDatabaseService.wipeAllData()
+                            exit(0)
+                        },
+                        secondaryButton: .cancel()
+                    )
+                }
             }
         }
         .listStyle(InsetGroupedListStyle())
