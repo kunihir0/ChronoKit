@@ -1,348 +1,229 @@
+import SwiftUI
 import UIKit
 import os.log
 
-@objc(ChronoKitSettingsViewController)
-public class SettingsViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
-
-    private var tableView: UITableView!
-    private var jailbreakStatusIndicator: StatusIndicatorView?
-    private var sslStatusIndicator: StatusIndicatorView?
-
-    public override func viewDidLoad() {
-        super.viewDidLoad()
-
-        self.title = "ChronoKit Settings"
-        self.view.backgroundColor = .systemGroupedBackground
-
-        self.tableView = UITableView(frame: self.view.bounds, style: .grouped)
-        self.tableView.dataSource = self
-        self.tableView.delegate = self
-        self.view.addSubview(self.tableView)
-
-        let backButton = UIBarButtonItem(title: "Back", style: .plain, target: self, action: #selector(closeTapped))
-        self.navigationItem.leftBarButtonItem = backButton
-
-    }
-
-
-    @objc func closeTapped() {
-        self.dismiss(animated: true, completion: nil)
-    }
-
-    public func numberOfSections(in tableView: UITableView) -> Int {
-        #if DEBUG
-        return 6
-        #else
-        return 5
-        #endif
-    }
-
-
-    public func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        if section == 0 { // Status section
-            return 2
-        }
-        if section == 1 { // Feed section
-            return 2
-        }
-        if section == 2 { // Downloads section
-            return 2
-        }
-        if section == 3 { // Bypass section
-            return 1
-        }
-        if section == 4 { // Developer or About section
-            #if DEBUG
-            return 4
-            #else
-            return 3
-            #endif
-        }
-        if section == 5 { // About section (only in DEBUG)
-            return 3
-        }
-        return 1
-    }
-
-    public func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        switch section {
-        case 0:
-            let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "N/A"
-            return "Status (App Version: \(version))"
-        case 1:
-            return "Feed"
-        case 2:
-            return "Downloads"
-        case 3:
-            return "Bypass"
-        case 4:
-            #if DEBUG
-            return "Developer"
-            #else
-            return "About"
-            #endif
-        case 5:
-            return "About"
-        default:
-            return nil
-        }
-    }
-
-    public func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil)
-        cell.selectionStyle = .none
-
-        switch indexPath.section {
-        case 0:
-            if indexPath.row == 0 {
-                cell.textLabel?.text = "Supported App Version"
-                let statusIndicator = StatusIndicatorView(frame: CGRect(x: 0, y: 0, width: 20, height: 20))
-                if let status = StatusIndicatorView.Status(rawValue: BypassStatusManager.shared.getAppVersionStatus()) {
-                    statusIndicator.status = status
+// Create the SwiftUI view
+public struct SettingsView: SwiftUI.View {
+    @AppStorage("download_button") private var downloadButton: Bool = false
+    @AppStorage("ad_block_enabled") private var adBlockEnabled: Bool = false
+    @AppStorage("high_quality") private var highQuality: Bool = false
+    @AppStorage("ssl_bypass_enabled") private var sslBypassEnabled: Bool = false
+    @AppStorage("debug_download_all_urls") private var debugDownloadAllUrls: Bool = false
+    @AppStorage("log_all_headers") private var logAllHeaders: Bool = false
+    
+    @State private var showRestartAlert = false
+    
+    public var body: some SwiftUI.View {
+        List {
+            Section(header: Text("Status (App Version: \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "N/A"))")) {
+                HStack {
+                    Label("Supported App Version", systemImage: "checkmark.seal.fill")
+                        .foregroundColor(.primary)
+                    Spacer()
+                    statusIcon(BypassStatusManager.shared.getAppVersionStatus())
                 }
-                cell.accessoryView = statusIndicator
-            } else if indexPath.row == 1 {
-                cell.textLabel?.text = "SSL Bypass"
-                let statusIndicator = StatusIndicatorView(frame: CGRect(x: 0, y: 0, width: 20, height: 20))
-                if let status = StatusIndicatorView.Status(rawValue: BypassStatusManager.shared.getSSLBypassStatus()) {
-                    statusIndicator.status = status
+                HStack {
+                    Label("SSL Bypass", systemImage: "lock.shield.fill")
+                        .foregroundColor(.primary)
+                    Spacer()
+                    statusIcon(BypassStatusManager.shared.getSSLBypassStatus())
                 }
-                self.sslStatusIndicator = statusIndicator
-                cell.accessoryView = statusIndicator
             }
-        case 1:
-            if indexPath.row == 0 {
-                cell.textLabel?.text = "Download Button"
-                cell.detailTextLabel?.text = "Enable download button for videos"
-
-                let switchView = UISwitch(frame: .zero)
-                switchView.setOn(UserDefaults.standard.bool(forKey: "download_button"), animated: true)
-                switchView.addTarget(self, action: #selector(downloadButtonToggled(_:)), for: .valueChanged)
-                cell.accessoryView = switchView
-            } else if indexPath.row == 1 {
-                cell.textLabel?.text = "Block Ads"
-                cell.detailTextLabel?.text = "Block advertisements in the feed"
-
-                let switchView = UISwitch(frame: .zero)
-                switchView.setOn(UserDefaults.standard.bool(forKey: "ad_block_enabled"), animated: true)
-                switchView.addTarget(self, action: #selector(adBlockToggled(_:)), for: .valueChanged)
-                cell.accessoryView = switchView
+            
+            Section(header: Text("Feed")) {
+                Toggle(isOn: $downloadButton) {
+                    Label("Download Button", systemImage: "arrow.down.circle.fill")
+                }
+                .tint(.blue)
+                
+                Toggle(isOn: $adBlockEnabled) {
+                    Label("Block Ads", systemImage: "hand.raised.slash.fill")
+                }
+                .tint(.red)
             }
-        case 2:
-            if indexPath.row == 0 {
-                cell.textLabel?.text = "High Quality"
-                cell.detailTextLabel?.text = "Download videos in high quality"
-
-                let switchView = UISwitch(frame: .zero)
-                switchView.setOn(UserDefaults.standard.bool(forKey: "high_quality"), animated: true)
-                switchView.addTarget(self, action: #selector(highQualityToggled(_:)), for: .valueChanged)
-                cell.accessoryView = switchView
-            } else if indexPath.row == 1 {
-                cell.textLabel?.text = "Media Vault"
-                cell.imageView?.image = UIImage(systemName: "folder.fill")
-                cell.accessoryType = .disclosureIndicator
+            
+            Section(header: Text("Downloads")) {
+                Toggle(isOn: $highQuality) {
+                    Label("High Quality", systemImage: "4k.tv.fill")
+                }
+                .tint(.purple)
+                
+                Button(action: {
+                    openVault()
+                }) {
+                    HStack {
+                        Label("Media Vault", systemImage: "folder.fill")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .foregroundColor(.gray)
+                    }
+                }
+                .foregroundColor(.primary)
             }
-        case 3:
-            cell.textLabel?.text = "Enable SSL Pinning"
-            cell.detailTextLabel?.text = "Enable SSL Pinning Bypass"
-
-            let switchView = UISwitch(frame: .zero)
-            switchView.setOn(UserDefaults.standard.bool(forKey: "ssl_bypass_enabled"), animated: true)
-            switchView.addTarget(self, action: #selector(sslBypassToggled(_:)), for: .valueChanged)
-            cell.accessoryView = switchView
-        case 4:
+            
+            Section(header: Text("Bypass")) {
+                Toggle(isOn: $sslBypassEnabled) {
+                    Label("Enable SSL Pinning", systemImage: "network.badge.shield.half.filled")
+                }
+                .tint(.green)
+                .onChange(of: sslBypassEnabled) { _ in
+                    showRestartAlert = true
+                }
+            }
+            
             #if DEBUG
-            if indexPath.row == 0 {
-                cell.textLabel?.text = "Debug Download All URLs"
-                cell.detailTextLabel?.text = "Download all URLs for a photo album for debugging"
-
-                let switchView = UISwitch(frame: .zero)
-                switchView.setOn(UserDefaults.standard.bool(forKey: "debug_download_all_urls"), animated: true)
-                switchView.addTarget(self, action: #selector(debugDownloadAllURLsToggled(_:)), for: .valueChanged)
-                cell.accessoryView = switchView
-            } else if indexPath.row == 1 {
-                cell.textLabel?.text = "Log All Headers"
-                cell.detailTextLabel?.text = "Log all HTTP headers for debugging"
-
-                let switchView = UISwitch(frame: .zero)
-                switchView.setOn(UserDefaults.standard.bool(forKey: "log_all_headers"), animated: true)
-                switchView.addTarget(self, action: #selector(logAllHeadersToggled(_:)), for: .valueChanged)
-                cell.accessoryView = switchView
-            } else if indexPath.row == 2 {
-                cell.textLabel?.text = "View Debug Log"
-                cell.accessoryType = .disclosureIndicator
-            }
-            #else
-            // This is the About section in non-debug builds
-            if indexPath.row == 0 {
-                cell.textLabel?.text = "Project Repo"
-                cell.accessoryType = .disclosureIndicator
-            } else if indexPath.row == 1 {
-                cell.textLabel?.text = "License"
-                cell.detailTextLabel?.text = "Apache License 2.0"
-                cell.selectionStyle = .default
-            } else if indexPath.row == 2 {
-                cell.textLabel?.text = "Credits"
-                let button = UIButton(type: .system)
-                button.setTitle("View Credits", for: .normal)
+            Section(header: Text("Developer")) {
+                Toggle(isOn: $debugDownloadAllUrls) {
+                    Label("Debug Download All URLs", systemImage: "ladybug.fill")
+                }
                 
-                let creditsMenu = UIMenu(title: "Credits", children: [
-                    UIAction(title: "DouX", handler: { _ in self.openURL(string: "https://github.com/kunihir0/DouX") }),
-                    UIAction(title: "tiktokusregion", handler: { _ in self.openURL(string: "https://github.com/iGerman00/tiktokusregion.git") }),
-                    UIAction(title: "tiktok-god", handler: { _ in self.openURL(string: "https://github.com/haoict/tiktok-god.git") }),
-                    UIAction(title: "TikTok-Tweaks", handler: { _ in self.openURL(string: "https://github.com/tuxi/TikTok-Tweaks.git") })
-                ])
+                Toggle(isOn: $logAllHeaders) {
+                    Label("Log All Headers", systemImage: "list.bullet.rectangle.portrait.fill")
+                }
                 
-                button.menu = creditsMenu
-                button.showsMenuAsPrimaryAction = true
-                button.sizeToFit()
-                cell.accessoryView = button
+                Button(action: {
+                    viewDebugLog()
+                }) {
+                    HStack {
+                        Label("View Debug Log", systemImage: "doc.text.magnifyingglass")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .foregroundColor(.gray)
+                    }
+                }
+                .foregroundColor(.primary)
             }
             #endif
-        case 5:
-            // This is the About section in debug builds
-            if indexPath.row == 0 {
-                cell.textLabel?.text = "Project Repo"
-                cell.accessoryType = .disclosureIndicator
-            } else if indexPath.row == 1 {
-                cell.textLabel?.text = "License"
-                cell.detailTextLabel?.text = "Apache License 2.0"
-                cell.selectionStyle = .default
-            } else if indexPath.row == 2 {
-                cell.textLabel?.text = "Credits"
-                let button = UIButton(type: .system)
-                button.setTitle("View Credits", for: .normal)
+            
+            Section(header: Text("About")) {
+                Button(action: {
+                    openURL("https://github.com/kunihir0/ChronoKit")
+                }) {
+                    HStack {
+                        Label("Project Repo", systemImage: "chevron.left.forwardslash.chevron.right")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .foregroundColor(.gray)
+                    }
+                }
+                .foregroundColor(.primary)
                 
-                let creditsMenu = UIMenu(title: "Credits", children: [
-                    UIAction(title: "DouX", handler: { _ in self.openURL(string: "https://github.com/kunihir0/DouX") }),
-                    UIAction(title: "tiktokusregion", handler: { _ in self.openURL(string: "https://github.com/iGerman00/tiktokusregion.git") }),
-                    UIAction(title: "tiktok-god", handler: { _ in self.openURL(string: "https://github.com/haoict/tiktok-god.git") }),
-                    UIAction(title: "TikTok-Tweaks", handler: { _ in self.openURL(string: "https://github.com/tuxi/TikTok-Tweaks.git") })
-                ])
+                HStack {
+                    Label("License", systemImage: "doc.plaintext.fill")
+                    Spacer()
+                    Text("Apache 2.0")
+                        .foregroundColor(.secondary)
+                }
                 
-                button.menu = creditsMenu
-                button.showsMenuAsPrimaryAction = true
-                button.sizeToFit()
-                cell.accessoryView = button
-            }
-        default:
-            break
-        }
-
-        return cell
-    }
-
-    public func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        tableView.deselectRow(at: indexPath, animated: true)
-        if indexPath.section == 2 {
-            if indexPath.row == 1 {
-                let vaultVC = VaultCreatorsViewController()
-                self.navigationController?.pushViewController(vaultVC, animated: true)
-            }
-        } else if indexPath.section == 4 {
-            #if DEBUG
-            if indexPath.row == 2 {
-                let logContent = FileLogger.shared.readLog()
-                let logVC = UIViewController()
-                let textView = UITextView(frame: logVC.view.bounds)
-                textView.text = logContent
-                textView.isEditable = false
-                logVC.view.addSubview(textView)
-                self.navigationController?.pushViewController(logVC, animated: true)
-            }
-            #else
-            // This is the About section in non-debug builds
-            if indexPath.row == 0 {
-                openURL(string: "https://github.com/kunihir0/ChronoKit")
-            } else if indexPath.row == 1 {
-                openURL(string: "https://www.apache.org/licenses/LICENSE-2.0")
-            }
-            #endif
-        } else if indexPath.section == 5 {
-            // This is the About section in debug builds
-            if indexPath.row == 0 {
-                openURL(string: "https://github.com/kunihir0/ChronoKit")
-            } else if indexPath.row == 1 {
-                openURL(string: "https://www.apache.org/licenses/LICENSE-2.0")
+                Menu {
+                    Button("DouX") { openURL("https://github.com/kunihir0/DouX") }
+                    Button("tiktokusregion") { openURL("https://github.com/iGerman00/tiktokusregion.git") }
+                    Button("tiktok-god") { openURL("https://github.com/haoict/tiktok-god.git") }
+                    Button("TikTok-Tweaks") { openURL("https://github.com/tuxi/TikTok-Tweaks.git") }
+                } label: {
+                    HStack {
+                        Label("Credits", systemImage: "person.3.fill")
+                        Spacer()
+                        Text("View Credits")
+                            .foregroundColor(.blue)
+                    }
+                }
+                .foregroundColor(.primary)
             }
         }
+        .listStyle(InsetGroupedListStyle())
+        .navigationTitle("ChronoKit Settings")
+        .alert(isPresented: $showRestartAlert) {
+            Alert(
+                title: Text("Restart Required"),
+                message: Text("Please restart the app for the changes to take effect."),
+                primaryButton: .destructive(Text("Restart Now")) {
+                    UserDefaults.standard.synchronize()
+                    exit(0)
+                },
+                secondaryButton: .cancel(Text("Later"))
+            )
+        }
     }
-
-    private func openURL(string: String) {
-        if let url = URL(string: string) {
+    
+    @ViewBuilder
+    private func statusIcon(_ statusRaw: Int) -> some SwiftUI.View {
+        let status = StatusIndicatorView.Status(rawValue: statusRaw) ?? .pending
+        switch status {
+        case .active:
+            Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
+        case .inactive:
+            Image(systemName: "xmark.circle.fill").foregroundColor(.red)
+        case .pending:
+            Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.yellow)
+        @unknown default:
+            Image(systemName: "questionmark.circle.fill").foregroundColor(.gray)
+        }
+    }
+    
+    private func openURL(_ urlString: String) {
+        if let url = URL(string: urlString) {
             UIApplication.shared.open(url)
         }
     }
-
-
-    @objc func downloadButtonToggled(_ sender: UISwitch) {
-        UserDefaults.standard.set(sender.isOn, forKey: "download_button")
-    }
-
-    @objc func adBlockToggled(_ sender: UISwitch) {
-        UserDefaults.standard.set(sender.isOn, forKey: "ad_block_enabled")
-    }
-
-
-    @objc func highQualityToggled(_ sender: UISwitch) {
-        UserDefaults.standard.set(sender.isOn, forKey: "high_quality")
-    }
-
-    @objc func sslBypassToggled(_ sender: UISwitch) {
-        UserDefaults.standard.set(sender.isOn, forKey: "ssl_bypass_enabled")
-        showRestartAlert()
-    }
-
-    @objc func debugDownloadAllURLsToggled(_ sender: UISwitch) {
-        UserDefaults.standard.set(sender.isOn, forKey: "debug_download_all_urls")
-    }
-
-    @objc func logAllHeadersToggled(_ sender: UISwitch) {
-        UserDefaults.standard.set(sender.isOn, forKey: "log_all_headers")
-    }
-
-    private func showRestartAlert() {
-        let alert = UIAlertController(title: "Restart Required", message: "Please restart the app for the changes to take effect.", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Later", style: .cancel, handler: nil))
-        alert.addAction(UIAlertAction(title: "Restart Now", style: .destructive, handler: { _ in
-            UserDefaults.standard.synchronize()
-            exit(0)
-        }))
-        present(alert, animated: true)
-    }
-
-    @objc func debugLastImage() {
-        let fileManager = FileManager.default
-        let documentsDirectory = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let debugURL = documentsDirectory.appendingPathComponent("debug")
-        let fileURL = debugURL.appendingPathComponent("last_downloaded_image.heic")
-
-        guard fileManager.fileExists(atPath: fileURL.path) else {
-            os_log("Debug file not found at %@", log: ck_log, type: .error, fileURL.path)
-            return
-        }
-
-        do {
-            let data = try Data(contentsOf: fileURL)
-            os_log("Debug file size: %d bytes", log: ck_log, type: .default, data.count)
-
-            let image = UIImage(data: data)
-            if image != nil {
-                os_log("UIImage(data:) successfully created a UIImage.", log: ck_log, type: .default)
-            } else {
-                os_log("UIImage(data:) returned nil.", log: ck_log, type: .error)
+    
+    private func pushViewController(_ vc: UIViewController) {
+        if let scene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
+           let rootVC = scene.windows.first?.rootViewController {
+            
+            var topController = rootVC
+            while let presented = topController.presentedViewController {
+                topController = presented
             }
-
-            let firstBytes = data.prefix(16).map { String(format: "%02hhx", $0) }.joined()
-            os_log("First 16 bytes of debug file: %@", log: ck_log, type: .default, firstBytes)
-
-            // Try to save as JPEG
-            let jpegURL = debugURL.appendingPathComponent("last_downloaded_image.jpeg")
-            try data.write(to: jpegURL)
-            os_log("Saved a copy of the debug file as JPEG to %@", log: ck_log, type: .default, jpegURL.path)
-
-        } catch {
-            os_log("Error reading or saving debug file: %@", log: ck_log, type: .error, error.localizedDescription)
+            
+            if let nav = topController as? UINavigationController {
+                nav.pushViewController(vc, animated: true)
+            } else if let nav = topController.navigationController {
+                nav.pushViewController(vc, animated: true)
+            } else {
+                topController.present(vc, animated: true)
+            }
         }
+    }
+    
+    private func openVault() {
+        let vaultVC = VaultCreatorsViewController()
+        pushViewController(vaultVC)
+    }
+    
+    private func viewDebugLog() {
+        #if DEBUG
+        let logContent = FileLogger.shared.readLog()
+        let logVC = UIViewController()
+        let textView = UITextView(frame: UIScreen.main.bounds)
+        textView.text = logContent
+        textView.isEditable = false
+        logVC.view.addSubview(textView)
+        logVC.title = "Debug Log"
+        pushViewController(logVC)
+        #endif
+    }
+}
+
+// UIKit Wrapper for Theos/Logos to present
+@objc(ChronoKitSettingsViewController)
+public class SettingsViewController: UIViewController {
+    
+    public override func viewDidLoad() {
+        super.viewDidLoad()
+        self.title = "ChronoKit Settings"
+        self.navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Back", style: .plain, target: self, action: #selector(closeTapped))
+        
+        let hostingController = UIHostingController(rootView: SettingsView())
+        
+        self.addChild(hostingController)
+        hostingController.view.frame = self.view.bounds
+        hostingController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        self.view.addSubview(hostingController.view)
+        hostingController.didMove(toParent: self)
+    }
+    
+    @objc private func closeTapped() {
+        self.dismiss(animated: true, completion: nil)
     }
 }

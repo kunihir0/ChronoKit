@@ -1,156 +1,172 @@
+import SwiftUI
 import UIKit
 
-@objc(ChronoKitVaultBrowserViewController)
-public class VaultBrowserViewController: UIViewController, UICollectionViewDelegate {
+class ThumbnailLoader: ObservableObject {
+    @Published var image: UIImage?
+    
+    func load(mediaItem: MediaMetadata) {
+        ThumbnailService.shared.getThumbnail(for: mediaItem) { loadedImage in
+            DispatchQueue.main.async {
+                self.image = loadedImage
+            }
+        }
+    }
+}
 
-    private var creatorID: String?
-    private var collectionView: UICollectionView!
-    private var dataSource: UICollectionViewDiffableDataSource<Int, MediaMetadata>!
-    private var media: [MediaMetadata] = []
-    private var isFavoritesFilterActive = false
-    private var filterButton: UIBarButtonItem!
-    private var sortButton: UIBarButtonItem!
+struct VaultItemThumbnailView: SwiftUI.View {
+    let mediaItem: MediaMetadata
+    @StateObject private var loader = ThumbnailLoader()
+    
+    var body: some SwiftUI.View {
+        ZStack {
+            Color.gray.opacity(0.3)
+            if let image = loader.image {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                ProgressView()
+            }
+            
+            if mediaItem.mediaType == .video {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Image(systemName: "video.fill")
+                            .font(.caption2)
+                            .foregroundColor(.white)
+                            .padding(4)
+                            .shadow(radius: 2)
+                        Spacer()
+                    }
+                }
+            }
+            
+            if mediaItem.isFavorite {
+                VStack {
+                    HStack {
+                        Spacer()
+                        Image(systemName: "heart.fill")
+                            .font(.caption2)
+                            .foregroundColor(.red)
+                            .padding(4)
+                            .shadow(radius: 2)
+                    }
+                    Spacer()
+                }
+            }
+        }
+        .clipped()
+        .onAppear {
+            loader.load(mediaItem: mediaItem)
+        }
+    }
+}
 
-    private enum SortMode {
+public struct VaultBrowserView: SwiftUI.View {
+    let creatorID: String?
+    
+    @State private var media: [MediaMetadata] = []
+    @State private var isFavoritesFilterActive = false
+    
+    enum SortMode {
         case downloadDate
         case creationDate
     }
-    private var currentSortMode: SortMode = .downloadDate
-
-    public init(creatorID: String?) {
-        self.creatorID = creatorID
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:)")
-    }
-
-    public override func viewDidLoad() {
-        super.viewDidLoad()
-
-        self.title = "Media Browser"
-        self.view.backgroundColor = .systemGroupedBackground
-
-        setupNavButtons()
-        setupCollectionView()
-        setupDataSource()
-        loadMedia()
-    }
-
-    public override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        loadMedia() // Reload data to reflect potential favorite changes
-    }
-
-    private func setupNavButtons() {
-        filterButton = UIBarButtonItem(image: UIImage(systemName: "heart"), style: .plain, target: self, action: #selector(filterButtonTapped))
-
-        let sortByDownload = UIAction(title: "Sort by Download Date") { [weak self] _ in
-            self?.updateSortMode(to: .downloadDate)
+    @State private var currentSortMode: SortMode = .downloadDate
+    
+    var presentViewer: (([MediaMetadata], Int) -> Void)?
+    
+    let columns = [
+        GridItem(.flexible(), spacing: 1),
+        GridItem(.flexible(), spacing: 1),
+        GridItem(.flexible(), spacing: 1)
+    ]
+    
+    var itemsToDisplay: [MediaMetadata] {
+        var items = isFavoritesFilterActive ? media.filter { $0.isFavorite } : media
+        switch currentSortMode {
+        case .downloadDate:
+            items.sort { $0.downloadDate > $1.downloadDate }
+        case .creationDate:
+            items.sort { $0.creationDate > $1.creationDate }
         }
-        let sortByCreation = UIAction(title: "Sort by Creation Date") { [weak self] _ in
-            self?.updateSortMode(to: .creationDate)
-        }
-        let sortMenu = UIMenu(title: "Sort By", children: [sortByDownload, sortByCreation])
-        sortButton = UIBarButtonItem(image: UIImage(systemName: "arrow.up.arrow.down"), menu: sortMenu)
-
-        navigationItem.rightBarButtonItems = [filterButton, sortButton]
+        return items
     }
-
-    @objc private func filterButtonTapped() {
-        isFavoritesFilterActive.toggle()
-        let imageName = isFavoritesFilterActive ? "heart.fill" : "heart"
-        filterButton.image = UIImage(systemName: imageName)
-        applySnapshot()
-    }
-
-    private func updateSortMode(to mode: SortMode) {
-        currentSortMode = mode
-        applySnapshot()
-    }
-
-    private func setupCollectionView() {
-        let layout = createLayout()
-        collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: layout)
-        collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        collectionView.backgroundColor = .systemBackground
-        collectionView.register(VaultItemCell.self, forCellWithReuseIdentifier: "VaultItemCell")
-        collectionView.delegate = self
-        view.addSubview(collectionView)
-    }
-
-    private func createLayout() -> UICollectionViewLayout {
-        let itemSize = NSCollectionLayoutSize(widthDimension: .fractionalWidth(0.33),
-                                             heightDimension: .fractionalHeight(1.0))
-        let item = NSCollectionLayoutItem(layoutSize: itemSize)
-        item.contentInsets = NSDirectionalEdgeInsets(top: 1, leading: 1, bottom: 1, trailing: 1)
-
-        let groupSize = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1.0),
-                                              heightDimension: .fractionalWidth(0.33))
-        let group = NSCollectionLayoutGroup.horizontal(layoutSize: groupSize, subitems: [item])
-
-        let section = NSCollectionLayoutSection(group: group)
-        let layout = UICollectionViewCompositionalLayout(section: section)
-        return layout
-    }
-
-    private func setupDataSource() {
-        dataSource = UICollectionViewDiffableDataSource<Int, MediaMetadata>(collectionView: collectionView) {
-            (collectionView, indexPath, mediaItem) -> UICollectionViewCell? in
-            let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "VaultItemCell", for: indexPath) as! VaultItemCell
-            
-            cell.configure(with: mediaItem)
-
-            ThumbnailService.shared.getThumbnail(for: mediaItem) { image in
-                cell.imageView.image = image
+    
+    public var body: some SwiftUI.View {
+        ScrollView {
+            LazyVGrid(columns: columns, spacing: 1) {
+                ForEach(Array(itemsToDisplay.enumerated()), id: \.element.itemID) { index, item in
+                    VaultItemThumbnailView(mediaItem: item)
+                        .aspectRatio(1, contentMode: .fill)
+                        .onTapGesture {
+                            presentViewer?(itemsToDisplay, index)
+                        }
+                }
             }
-            
-            return cell
+        }
+        .background(Color(.systemBackground))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
+                Button(action: {
+                    isFavoritesFilterActive.toggle()
+                }) {
+                    Image(systemName: isFavoritesFilterActive ? "heart.fill" : "heart")
+                }
+                
+                Menu {
+                    Button("Sort by Download Date") { currentSortMode = .downloadDate }
+                    Button("Sort by Creation Date") { currentSortMode = .creationDate }
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down")
+                }
+            }
+        }
+        .onAppear {
+            loadMedia()
         }
     }
-
+    
     private func loadMedia() {
         do {
             self.media = try VaultDatabaseService.shared.loadMedia(for: self.creatorID)
-            applySnapshot()
         } catch {
             print("Error loading media: \(error)")
         }
     }
+}
 
-    private func applySnapshot() {
-        var snapshot = NSDiffableDataSourceSnapshot<Int, MediaMetadata>()
-        snapshot.appendSections([0])
-
-        var itemsToDisplay = isFavoritesFilterActive ? media.filter { $0.isFavorite } : media
-
-        switch currentSortMode {
-        case .downloadDate:
-            itemsToDisplay.sort { $0.downloadDate > $1.downloadDate }
-        case .creationDate:
-            itemsToDisplay.sort { $0.creationDate > $1.creationDate }
-        }
-
-        snapshot.appendItems(itemsToDisplay)
-
-        dataSource.apply(snapshot, animatingDifferences: true)
+@objc(ChronoKitVaultBrowserViewController)
+public class VaultBrowserViewController: UIViewController {
+    private var creatorID: String?
+    
+    public init(creatorID: String?) {
+        self.creatorID = creatorID
+        super.init(nibName: nil, bundle: nil)
     }
-
-    // MARK: - UICollectionViewDelegate
-
-    public func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-        var itemsToDisplay = isFavoritesFilterActive ? media.filter { $0.isFavorite } : media
-
-        switch currentSortMode {
-        case .downloadDate:
-            itemsToDisplay.sort { $0.downloadDate > $1.downloadDate }
-        case .creationDate:
-            itemsToDisplay.sort { $0.creationDate > $1.creationDate }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:)")
+    }
+    
+    public override func viewDidLoad() {
+        super.viewDidLoad()
+        self.view.backgroundColor = .systemBackground
+        
+        var browserView = VaultBrowserView(creatorID: creatorID)
+        browserView.presentViewer = { [weak self] items, index in
+            let pageVC = MediaViewerPageViewController(mediaItems: items, initialIndex: index)
+            pageVC.modalPresentationStyle = .fullScreen
+            self?.present(pageVC, animated: true, completion: nil)
         }
-
-        let pageVC = MediaViewerPageViewController(mediaItems: itemsToDisplay, initialIndex: indexPath.item)
-        pageVC.modalPresentationStyle = .fullScreen
-        present(pageVC, animated: true, completion: nil)
+        
+        let hostingController = UIHostingController(rootView: browserView)
+        self.addChild(hostingController)
+        hostingController.view.frame = self.view.bounds
+        hostingController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        self.view.addSubview(hostingController.view)
+        hostingController.didMove(toParent: self)
     }
 }
