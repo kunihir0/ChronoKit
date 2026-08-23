@@ -115,7 +115,6 @@ extension DownloadManager: URLSessionDataDelegate {
             if let response = task.response as? HTTPURLResponse {
                 if UserDefaults.standard.bool(forKey: "log_all_headers") {
                     let logMessage = "Headers for URL: \(task.originalRequest?.url?.absoluteString ?? "N/A")\n\(response.allHeaderFields.description)"
-                    FileLogger.shared.log(logMessage)
                 }
             }
 

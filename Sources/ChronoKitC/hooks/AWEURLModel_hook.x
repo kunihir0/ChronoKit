@@ -24,7 +24,6 @@ static void *ChronoKitGoodURLsKey = &ChronoKitGoodURLsKey;
 
     if (hasGoodURLs && ![self ChronoKitGoodURLs]) {
         [self setChronoKitGoodURLs:list];
-        os_log_error(ck_log, "[CACHE] Cached good URL list: %@", list);
     }
 }
 
@@ -41,10 +40,8 @@ static void *ChronoKitGoodURLsKey = &ChronoKitGoodURLsKey;
 %new
 - (NSArray *)chronoKit_URLListToUse {
     if (self.ChronoKitGoodURLs) {
-        os_log_error(ck_log, "[AWEURLModel+ChronoKit] Using cached URLs: %@", self.ChronoKitGoodURLs);
         return self.ChronoKitGoodURLs;
     }
-    os_log_error(ck_log, "[AWEURLModel+ChronoKit] Using origin URLs: %@", self.originURLList);
     return self.originURLList;
 }
 

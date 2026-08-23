@@ -6,13 +6,11 @@ public class URLFilter: NSObject {
     @objc public static let shared = URLFilter()
 
     @objc public func bestImageURL(from urls: [String]) -> URL? {
-        FileLogger.shared.log("[SWIFT] All original URLs: \(urls)")
 
         // Filter for actual photo URLs
         let photoURLs = urls.filter { url in
             // Explicitly blacklist VVIC urls
             if url.contains("_vvic_") {
-                FileLogger.shared.log("[SWIFT] [BLACKLISTED] VVIC URL: \(url)")
                 return false
             }
 
@@ -22,7 +20,6 @@ public class URLFilter: NSObject {
             return isImageType && isPhotoType
         }
         
-        FileLogger.shared.log("[SWIFT] Filtered photo URLs: \(photoURLs)")
 
         if photoURLs.isEmpty {
             return nil
@@ -55,7 +52,6 @@ public class URLFilter: NSObject {
                 currentScore += 60
             }
             
-            FileLogger.shared.log("[SWIFT] URL: \(urlString), Score: \(currentScore)")
 
             if currentScore > highestScore {
                 highestScore = currentScore
@@ -64,7 +60,6 @@ public class URLFilter: NSObject {
         }
 
         if let bestURL = bestURL {
-            FileLogger.shared.log("[SWIFT] Best URL found: \(bestURL) with score \(highestScore)")
             return URL(string: bestURL)
         }
 
@@ -72,18 +67,15 @@ public class URLFilter: NSObject {
     }
 
     @objc public func bestVideoURL(from urls: [String], highQuality: Bool) -> URL? {
-        FileLogger.shared.log("[SWIFT] Finding best video URL from: \(urls)")
         if highQuality {
             for urlString in urls {
                 if urlString.contains("mime_type=video_mp4") && !urlString.contains("api16-normal-useast8.tiktokv.us") {
-                    FileLogger.shared.log("[SWIFT] Found high quality video URL: \(urlString)")
                     return URL(string: urlString)
                 }
             }
         } else {
             for urlString in urls {
                 if !urlString.contains("mime_type=video_mp4") && !urlString.contains("api16-normal-useast8.tiktokv.us") {
-                    FileLogger.shared.log("[SWIFT] Found low quality video URL: \(urlString)")
                     return URL(string: urlString)
                 }
             }

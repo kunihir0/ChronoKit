@@ -307,33 +307,14 @@ class MediaViewerPageViewController: UIPageViewController, UIPageViewControllerD
 
     @objc private func shareButtonTapped() {
         let item = mediaItems[currentIndex]
-        guard let filePath = item.primaryLocalFilePath else { return }
-        let url = VaultJSONService.shared.getURL(for: filePath)
+        let provider = EncryptedMediaItemProvider(item: item)
+        let activityVC = UIActivityViewController(activityItems: [provider], applicationActivities: nil)
         
-        do {
-            let encryptedData = try Data(contentsOf: url)
-            let decryptedData = try EncryptionManager.shared.decrypt(data: encryptedData)
-            
-            let ext = item.mediaType == .video ? "mp4" : "jpg"
-            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(item.itemID).appendingPathExtension(ext)
-            
-            try decryptedData.write(to: tempURL)
-            
-            let activityVC = UIActivityViewController(activityItems: [tempURL], applicationActivities: nil)
-            
-            if let popover = activityVC.popoverPresentationController {
-                popover.sourceView = shareButton
-            }
-            
-            activityVC.completionWithItemsHandler = { (activityType, completed, returnedItems, activityError) in
-                try? FileManager.default.removeItem(at: tempURL)
-            }
-            
-            present(activityVC, animated: true, completion: nil)
-            
-        } catch {
-            print("Error decrypting for share: \(error)")
+        if let popover = activityVC.popoverPresentationController {
+            popover.sourceView = shareButton
         }
+        
+        present(activityVC, animated: true, completion: nil)
     }
 
     // MARK: - Pan to Dismiss
@@ -358,5 +339,28 @@ class MediaViewerPageViewController: UIPageViewController, UIPageViewControllerD
         default:
             break
         }
+    }
+}
+class EncryptedMediaItemProvider: UIActivityItemProvider, @unchecked Sendable {
+    private let mediaItem: MediaMetadata
+    
+    init(item: MediaMetadata) {
+        self.mediaItem = item
+        super.init(placeholderItem: Data())
+    }
+    
+    override var item: Any {
+        guard let filePath = mediaItem.primaryLocalFilePath else { return Data() }
+        let url = VaultJSONService.shared.getURL(for: filePath)
+        do {
+            let encryptedData = try Data(contentsOf: url)
+            return try EncryptionManager.shared.decrypt(data: encryptedData)
+        } catch {
+            return Data()
+        }
+    }
+    
+    override func activityViewController(_ activityViewController: UIActivityViewController, dataTypeIdentifierForActivityType activityType: UIActivity.ActivityType?) -> String {
+        return mediaItem.mediaType == .video ? "public.mpeg-4" : "public.jpeg"
     }
 }
