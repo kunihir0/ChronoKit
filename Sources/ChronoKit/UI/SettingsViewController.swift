@@ -10,6 +10,7 @@ public struct SettingsView: SwiftUI.View {
     @AppStorage("ssl_bypass_enabled") private var sslBypassEnabled: Bool = false
     @AppStorage("debug_download_all_urls") private var debugDownloadAllUrls: Bool = false
     @AppStorage("log_all_headers") private var logAllHeaders: Bool = false
+    @AppStorage("anon_profile_view_enabled") private var anonProfileViewEnabled: Bool = false
     
     @State private var showRestartAlert = false
     @State private var showClearDataAlert = false
@@ -70,6 +71,13 @@ public struct SettingsView: SwiftUI.View {
                 .onChange(of: sslBypassEnabled) { _ in
                     showRestartAlert = true
                 }
+            }
+            
+            Section(header: Text("Privacy")) {
+                Toggle(isOn: $anonProfileViewEnabled) {
+                    Label("Anonymous Profile Viewing", systemImage: "eye.slash.fill")
+                }
+                .tint(.blue)
             }
             
             #if DEBUG
