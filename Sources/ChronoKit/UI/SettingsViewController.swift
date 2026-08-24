@@ -12,6 +12,7 @@ public struct SettingsView: SwiftUI.View {
     @AppStorage("debug_download_all_urls") private var debugDownloadAllUrls: Bool = false
     @AppStorage("log_all_headers") private var logAllHeaders: Bool = false
     @AppStorage("anon_profile_view_enabled") private var anonProfileViewEnabled: Bool = false
+    @AppStorage("hide_story_views_enabled") private var hideStoryViewsEnabled: Bool = false
     
     @State private var showRestartAlert = false
     @State private var showClearDataAlert = false
@@ -62,6 +63,18 @@ public struct SettingsView: SwiftUI.View {
                     }
                 }
                 .foregroundColor(.primary)
+            }
+            
+            Section(header: Text("Privacy")) {
+                Toggle(isOn: $anonProfileViewEnabled) {
+                    Label("Anonymous Profile Viewing", systemImage: "eye.slash.fill")
+                }
+                .tint(.blue)
+                
+                Toggle(isOn: $hideStoryViewsEnabled) {
+                    Label("Hide My Story Views", systemImage: "play.slash.fill")
+                }
+                .tint(.blue)
             }
             
             Section(header: Text("Bypass")) {
