@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 import os.log
 
+
 // Create the SwiftUI view
 public struct SettingsView: SwiftUI.View {
     @AppStorage("download_button") private var downloadButton: Bool = false
@@ -72,6 +73,7 @@ public struct SettingsView: SwiftUI.View {
                     showRestartAlert = true
                 }
             }
+            
             
             Section(header: Text("Privacy")) {
                 Toggle(isOn: $anonProfileViewEnabled) {
