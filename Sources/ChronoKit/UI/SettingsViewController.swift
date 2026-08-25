@@ -13,6 +13,7 @@ public struct SettingsView: SwiftUI.View {
     @AppStorage("log_all_headers") private var logAllHeaders: Bool = false
     @AppStorage("anon_profile_view_enabled") private var anonProfileViewEnabled: Bool = false
     @AppStorage("hide_story_views_enabled") private var hideStoryViewsEnabled: Bool = false
+    @AppStorage("story_download_button") private var storyDownloadButton: Bool = false
     
     @State private var showRestartAlert = false
     @State private var showClearDataAlert = false
@@ -43,7 +44,13 @@ public struct SettingsView: SwiftUI.View {
                 Toggle(isOn: $adBlockEnabled) {
                     Label("Block Ads", systemImage: "hand.raised.slash.fill")
                 }
-                .tint(.red)
+            }
+            
+            Section(header: Text("Stories")) {
+                Toggle(isOn: $storyDownloadButton) {
+                    Label("Show Download Button", systemImage: "arrow.down.circle.fill")
+                }
+                .tint(.blue)
             }
             
             Section(header: Text("Downloads")) {
