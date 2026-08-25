@@ -13,6 +13,8 @@ public struct SettingsView: SwiftUI.View {
     @AppStorage("log_all_headers") private var logAllHeaders: Bool = false
     @AppStorage("anon_profile_view_enabled") private var anonProfileViewEnabled: Bool = false
     @AppStorage("hide_story_views_enabled") private var hideStoryViewsEnabled: Bool = false
+    @AppStorage("hide_message_views_enabled") private var hideMessageViewsEnabled: Bool = false
+    @AppStorage("always_show_read_receipts_enabled") private var alwaysShowReadReceiptsEnabled: Bool = false
     @AppStorage("story_download_button") private var storyDownloadButton: Bool = false
     
     @State private var showRestartAlert = false
@@ -88,12 +90,22 @@ public struct SettingsView: SwiftUI.View {
             
             Section(header: Text("Privacy")) {
                 Toggle(isOn: $anonProfileViewEnabled) {
-                    Label("Anonymous Profile Viewing", systemImage: "eye.slash.fill")
+                    Label("Anonymous Profile Viewing", systemImage: "person.fill.viewfinder")
                 }
                 .tint(.blue)
                 
                 Toggle(isOn: $hideStoryViewsEnabled) {
                     Label("Hide My Story Views", systemImage: "play.slash.fill")
+                }
+                .tint(.blue)
+                
+                Toggle(isOn: $hideMessageViewsEnabled) {
+                    Label("Hide Message Views", systemImage: "message.badge.filled.fill")
+                }
+                .tint(.blue)
+                
+                Toggle(isOn: $alwaysShowReadReceiptsEnabled) {
+                    Label("Always Show Read Receipts", systemImage: "eye.fill")
                 }
                 .tint(.blue)
             }
@@ -109,12 +121,6 @@ public struct SettingsView: SwiftUI.View {
             }
             
             
-            Section(header: Text("Privacy")) {
-                Toggle(isOn: $anonProfileViewEnabled) {
-                    Label("Anonymous Profile Viewing", systemImage: "eye.slash.fill")
-                }
-                .tint(.blue)
-            }
             
             #if DEBUG
             Section(header: Text("Developer")) {
