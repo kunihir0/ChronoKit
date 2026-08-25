@@ -20,3 +20,15 @@ docs
 findings_summary
 logs
 out
+
+.omp
+.venv
+frida
+layout
+RE
+
+*.py
+FridaGadget.config
+FridaGadget.dylib
+.env
+node_modules

@@ -20,7 +20,21 @@ public struct SettingsView: SwiftUI.View {
     
     public var body: some SwiftUI.View {
         List {
-            Section(header: Text("Status (App Version: \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "N/A"))")) {
+            Section(header: Text("Status")) {
+                HStack {
+                    Label("ChronoKit Version", systemImage: "info.circle.fill")
+                        .foregroundColor(.primary)
+                    Spacer()
+                    Text(ChronoKitVersion)
+                        .foregroundColor(.secondary)
+                }
+                HStack {
+                    Label("TikTok App Version", systemImage: "app.badge.fill")
+                        .foregroundColor(.primary)
+                    Spacer()
+                    Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "N/A")
+                        .foregroundColor(.secondary)
+                }
                 HStack {
                     Label("Supported App Version", systemImage: "checkmark.seal.fill")
                         .foregroundColor(.primary)

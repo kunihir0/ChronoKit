@@ -23,7 +23,7 @@ public class BypassStatusManager: NSObject {
             return 1 // Return inactive/unsupported if version can't be determined
         }
 
-        let supportedVersionString = "43.4.0"
+        let supportedVersionString = "46.6.0"
 
         // Using numeric comparison to correctly handle version strings
         if currentVersionString.compare(supportedVersionString, options: .numeric) != .orderedDescending {
