@@ -39,12 +39,12 @@ jobs:
       - name: Fetch Release Package
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.chronokit_version }}
         run: |
-          VERSION="${{ inputs.chronokit_version }}"
-          if [[ ! "$VERSION" == v* ]]; then
-            TAG="v$VERSION"
+          if [[ ! "$INPUT_VERSION" == v* ]]; then
+            TAG="v$INPUT_VERSION"
           else
-            TAG="$VERSION"
+            TAG="$INPUT_VERSION"
           fi
           
           echo "Fetching release $TAG..."
@@ -78,12 +78,12 @@ jobs:
         if: inputs.publish_ipa == true
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.chronokit_version }}
         run: |
-          VERSION="${{ inputs.chronokit_version }}"
-          if [[ ! "$VERSION" == v* ]]; then
-            TAG="v$VERSION"
+          if [[ ! "$INPUT_VERSION" == v* ]]; then
+            TAG="v$INPUT_VERSION"
           else
-            TAG="$VERSION"
+            TAG="$INPUT_VERSION"
           fi
           
           IPA_FILE=$(ls TikTok_*_ChronoKit.ipa | head -n 1)

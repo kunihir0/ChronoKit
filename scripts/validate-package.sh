@@ -50,12 +50,6 @@ elif [[ "$EXPECTED_SCHEME" == "roothide" ]]; then
     fi
 fi
 
-# Ensure no debug suffix on the deb file name
-if [[ "$DEB_FILE" == *"debug"* ]]; then
-    echo "Validation failed: Deb file name contains 'debug'."
-    exit 1
-fi
-
 # Ensure Orion exists in Depends
 PKG_DEPENDS=$(awk -F': ' '/^[ \t]*Depends:/ {print $2}' "$TMP_DIR/info.txt")
 if [[ "$PKG_DEPENDS" != *"dev.theos.orion"* ]]; then
@@ -88,6 +82,12 @@ if [[ -f "$DYLIB_PATH" ]]; then
     otool -L "$DYLIB_PATH" | grep -v "^\s*/usr/lib" | grep -v "^\s*/System/Library" || true
 else
     echo "Error: $DYLIB_PATH not found in extracted files."
+    exit 1
+fi
+
+# Ensure binary is stripped (no debug symbols)
+if file "$DYLIB_PATH" | grep -q "not stripped"; then
+    echo "Validation failed: ChronoKit.dylib contains debug symbols (not stripped)."
     exit 1
 fi
 

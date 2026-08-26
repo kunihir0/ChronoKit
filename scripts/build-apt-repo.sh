@@ -31,13 +31,22 @@ Components: main
 Description: ChronoKit package repository
 EOF
 
-# Calculate hashes for the Release file
+# Calculate hashes and sizes for the Release file
 echo "MD5Sum:" >> Release
-md5sum Packages Packages.gz Packages.bz2 | awk '{printf " %s %s %s\n", $1, "0", $2}' >> Release
+for file in Packages Packages.gz Packages.bz2; do
+    size=$(wc -c < "$file" | tr -d ' ')
+    md5sum "$file" | awk -v size="$size" '{printf " %s %s %s\n", $1, size, $2}' >> Release
+done
 echo "SHA1:" >> Release
-sha1sum Packages Packages.gz Packages.bz2 | awk '{printf " %s %s %s\n", $1, "0", $2}' >> Release
+for file in Packages Packages.gz Packages.bz2; do
+    size=$(wc -c < "$file" | tr -d ' ')
+    sha1sum "$file" | awk -v size="$size" '{printf " %s %s %s\n", $1, size, $2}' >> Release
+done
 echo "SHA256:" >> Release
-sha256sum Packages Packages.gz Packages.bz2 | awk '{printf " %s %s %s\n", $1, "0", $2}' >> Release
+for file in Packages Packages.gz Packages.bz2; do
+    size=$(wc -c < "$file" | tr -d ' ')
+    sha256sum "$file" | awk -v size="$size" '{printf " %s %s %s\n", $1, size, $2}' >> Release
+done
 
 echo "Creating index.html..."
 cat <<EOF > index.html
