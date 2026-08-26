@@ -61,8 +61,10 @@ jobs:
 
       - name: Setup pinned Rootless Theos and SDK
         run: |
-          git clone --recursive https://github.com/theos/theos.git "$HOME/theos"
-          git -C "$HOME/theos" checkout 5280bd038207e14f8bd76f5417aa2fe641c03228
+          ./scripts/setup-theos.sh \
+            https://github.com/theos/theos.git \
+            5280bd038207e14f8bd76f5417aa2fe641c03228 \
+            "$HOME/theos"
           ./scripts/setup-sdk.sh "$HOME/theos"
 
       - name: Build and validate Rootless package
@@ -84,9 +86,10 @@ jobs:
 
       - name: Setup pinned RootHide Theos and SDK
         run: |
-          rm -rf "$HOME/theos"
-          git clone --recursive https://github.com/roothide/theos.git "$HOME/theos"
-          git -C "$HOME/theos" checkout 88506b2c22e9e07dd4ed055f23c9e398a117a2c7
+          ./scripts/setup-theos.sh \
+            https://github.com/roothide/theos.git \
+            88506b2c22e9e07dd4ed055f23c9e398a117a2c7 \
+            "$HOME/theos"
           ./scripts/setup-sdk.sh "$HOME/theos"
 
       - name: Build and validate RootHide package

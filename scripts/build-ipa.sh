@@ -21,7 +21,10 @@ if [[ -z "${TIKTOK_IPA_URL:-}" || -z "${TIKTOK_IPA_SHA256:-}" ]]; then
     echo "  gh secret set TIKTOK_IPA_SHA256"
     exit 1
 fi
-if [[ ! "$TIKTOK_IPA_SHA256" =~ ^[[:xdigit:]]{64}$ ]]; then
+BASE_IPA_URL="$TIKTOK_IPA_URL"
+BASE_IPA_EXPECTED_SHA256="$TIKTOK_IPA_SHA256"
+unset TIKTOK_IPA_URL TIKTOK_IPA_SHA256
+if [[ ! "$BASE_IPA_EXPECTED_SHA256" =~ ^[[:xdigit:]]{64}$ ]]; then
     echo "Error: base IPA SHA256 secret is not valid SHA256 format."
     exit 1
 fi
@@ -53,13 +56,15 @@ PLIST_BUDDY="/usr/libexec/PlistBuddy"
 
 curl --fail --location --silent --show-error \
     --output "$BASE_IPA" \
-    "$TIKTOK_IPA_URL"
+    "$BASE_IPA_URL"
+unset BASE_IPA_URL
 
 ACTUAL_SHA256=$(shasum -a 256 "$BASE_IPA" | awk '{print $1}')
-if [[ "$ACTUAL_SHA256" != "$TIKTOK_IPA_SHA256" ]]; then
+if [[ "$ACTUAL_SHA256" != "$BASE_IPA_EXPECTED_SHA256" ]]; then
     echo "Error: base IPA SHA256 verification failed."
     exit 1
 fi
+unset BASE_IPA_EXPECTED_SHA256
 
 unzip -tq "$BASE_IPA" >/dev/null
 unzip -q "$BASE_IPA" -d "$TMP_DIR/input"
@@ -140,21 +145,42 @@ if [[ ${#chronokit_dylibs[@]} -ne 1 ]]; then
 fi
 DYLIB_PATH="${chronokit_dylibs[0]}"
 
-if ! otool -L "$MAIN_EXECUTABLE" | grep -q 'ChronoKit\.dylib'; then
-    echo "Error: TikTok executable does not load ChronoKit.dylib."
-    exit 1
-fi
-
 LOAD_COMMANDS=$(otool -l "$DYLIB_PATH"; otool -l "$MAIN_EXECUTABLE")
 if grep -Eq '/var/jb|\.jbroot|/Users/' <<< "$LOAD_COMMANDS"; then
     echo "Error: output IPA contains unresolved jailbreak or developer load paths."
     exit 1
 fi
 
+expand_runtime_path() {
+    local owner_binary="$1"
+    local runtime_path="$2"
+
+    case "$runtime_path" in
+        @executable_path)
+            printf '%s\n' "$OUTPUT_APP"
+            ;;
+        @executable_path/*)
+            printf '%s/%s\n' "$OUTPUT_APP" "${runtime_path#@executable_path/}"
+            ;;
+        @loader_path)
+            dirname "$owner_binary"
+            ;;
+        @loader_path/*)
+            printf '%s/%s\n' "$(dirname "$owner_binary")" "${runtime_path#@loader_path/}"
+            ;;
+        /*)
+            printf '%s\n' "$runtime_path"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 resolve_dependency() {
-    local dependency="$1"
-    local relative candidate
-    local matches=()
+    local owner_binary="$1"
+    local dependency="$2"
+    local relative candidate runtime_path expanded_rpath
 
     case "$dependency" in
         /System/Library/*|/usr/lib/*)
@@ -162,22 +188,27 @@ resolve_dependency() {
             ;;
         @executable_path/*)
             relative="${dependency#@executable_path/}"
-            candidate="$OUTPUT_APP/$relative"
-            [[ -f "$candidate" ]] || return 1
+            [[ -f "$OUTPUT_APP/$relative" ]]
             ;;
         @loader_path/*)
             relative="${dependency#@loader_path/}"
-            candidate="$(dirname "$DYLIB_PATH")/$relative"
-            [[ -f "$candidate" ]] || return 1
+            [[ -f "$(dirname "$owner_binary")/$relative" ]]
             ;;
         @rpath/*)
             relative="${dependency#@rpath/}"
-            while IFS= read -r candidate; do
-                matches+=("$candidate")
-            done < <(find "$OUTPUT_APP" -type f -path "*/$relative" -print)
-            [[ ${#matches[@]} -ge 1 ]] || return 1
-            ;;
-        /*)
+            while IFS= read -r runtime_path; do
+                if ! expanded_rpath=$(expand_runtime_path "$owner_binary" "$runtime_path"); then
+                    continue
+                fi
+                candidate="$expanded_rpath/$relative"
+                if [[ -f "$candidate" ]]; then
+                    return 0
+                fi
+            done < <(
+                otool -l "$owner_binary" |
+                    awk '$1 == "cmd" && $2 == "LC_RPATH" { wanted = 1; next }
+                         wanted && $1 == "path" { print $2; wanted = 0 }'
+            )
             return 1
             ;;
         *)
@@ -186,6 +217,21 @@ resolve_dependency() {
     esac
 }
 
+main_chronokit_dependencies=()
+while IFS= read -r dependency; do
+    if [[ "$dependency" == *ChronoKit.dylib ]]; then
+        main_chronokit_dependencies+=("$dependency")
+    fi
+done < <(otool -L "$MAIN_EXECUTABLE" | awk 'NR > 1 {print $1}')
+if [[ ${#main_chronokit_dependencies[@]} -ne 1 ]]; then
+    echo "Error: TikTok executable must contain exactly one ChronoKit load command."
+    exit 1
+fi
+if ! resolve_dependency "$MAIN_EXECUTABLE" "${main_chronokit_dependencies[0]}"; then
+    echo "Error: TikTok executable's ChronoKit load command does not resolve."
+    exit 1
+fi
+
 orion_dependency=false
 substrate_dependency=false
 while IFS= read -r dependency; do
@@ -193,7 +239,7 @@ while IFS= read -r dependency; do
     if [[ "$dependency" == *ChronoKit.dylib ]]; then
         continue
     fi
-    if ! resolve_dependency "$dependency"; then
+    if ! resolve_dependency "$DYLIB_PATH" "$dependency"; then
         echo "Error: unresolved non-system ChronoKit dependency: $dependency"
         exit 1
     fi

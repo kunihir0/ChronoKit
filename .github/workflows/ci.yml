@@ -30,15 +30,19 @@ jobs:
       - name: Setup Theos (Rootless)
         if: matrix.scheme == 'rootless'
         run: |
-          git clone --recursive https://github.com/theos/theos.git "$HOME/theos"
-          git -C "$HOME/theos" checkout 5280bd038207e14f8bd76f5417aa2fe641c03228
+          ./scripts/setup-theos.sh \
+            https://github.com/theos/theos.git \
+            5280bd038207e14f8bd76f5417aa2fe641c03228 \
+            "$HOME/theos"
           echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
 
       - name: Setup Theos (RootHide)
         if: matrix.scheme == 'roothide'
         run: |
-          git clone --recursive https://github.com/roothide/theos.git "$HOME/theos"
-          git -C "$HOME/theos" checkout 88506b2c22e9e07dd4ed055f23c9e398a117a2c7
+          ./scripts/setup-theos.sh \
+            https://github.com/roothide/theos.git \
+            88506b2c22e9e07dd4ed055f23c9e398a117a2c7 \
+            "$HOME/theos"
           echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
 
       - name: Setup verified SDK
