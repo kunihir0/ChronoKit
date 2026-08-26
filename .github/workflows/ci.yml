@@ -30,6 +30,7 @@ jobs:
           git clone --recursive https://github.com/theos/theos.git ~/theos
           cd ~/theos && git checkout 5280bd038207e14f8bd76f5417aa2fe641c03228
           echo "THEOS=~/theos" >> $GITHUB_ENV
+          brew install dpkg
 
       - name: Setup Theos (RootHide)
         if: matrix.scheme == 'roothide'
@@ -37,7 +38,7 @@ jobs:
           git clone --recursive https://github.com/roothide/theos.git ~/theos
           cd ~/theos && git checkout 88506b2c22e9e07dd4ed055f23c9e398a117a2c7
           echo "THEOS=~/theos" >> $GITHUB_ENV
-          brew install ldid xz
+          brew install ldid xz dpkg
 
       - name: Setup SDKs
         run: |
