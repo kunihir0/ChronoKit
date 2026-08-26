@@ -6,8 +6,13 @@ on:
       - 'v*.*.*'
   workflow_dispatch:
     inputs:
+      deploy_pages:
+        description: 'Deploy the generated APT repository to GitHub Pages'
+        required: true
+        type: boolean
+        default: false
       publish:
-        description: 'Publish release and deploy Pages'
+        description: 'Publish the GitHub Release assets'
         required: true
         type: boolean
         default: false
@@ -135,38 +140,19 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-  publish:
-    name: Publish release and deploy Pages
+  deploy_pages:
+    name: Deploy APT repository to Pages
     needs: build_release
-    if: github.ref_type == 'tag' || inputs.publish == true
+    if: github.ref_type == 'tag' || inputs.deploy_pages == true
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       pages: write
       id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Validate publication ref
-        env:
-          VERSION: ${{ needs.build_release.outputs.version }}
-        run: |
-          if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then
-            echo "Error: publication requires a tag ref."
-            exit 1
-          fi
-          if [[ "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
-            echo "Error: publication tag does not match control Version."
-            exit 1
-          fi
-
-      - name: Download release bundle
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: release-bundle
-          path: release-bundle/
-
       - name: Download APT repository
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -184,6 +170,33 @@ jobs:
       - name: Deploy Pages
         id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+
+  publish_release:
+    name: Publish GitHub Release
+    needs: build_release
+    if: github.ref_type == 'tag' || inputs.publish == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Validate publication ref
+        env:
+          VERSION: ${{ needs.build_release.outputs.version }}
+        run: |
+          if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then
+            echo "Error: release publication requires a tag ref."
+            exit 1
+          fi
+          if [[ "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
+            echo "Error: publication tag does not match control Version."
+            exit 1
+          fi
+
+      - name: Download release bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-bundle
+          path: release-bundle/
 
       - name: Create or update GitHub Release
         env:
