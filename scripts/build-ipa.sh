@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-# Usage: ./scripts/build-ipa.sh <path_to_deb>
-
-if [[ -z "$1" ]]; then
+if [[ -z "${1:-}" ]]; then
     echo "Usage: $0 <path_to_deb>"
     exit 1
 fi
@@ -19,7 +17,7 @@ echo "--- IPA Injection Process ---"
 echo "Tweak: $TWEAK_DEB"
 
 # Validate secrets
-if [[ -z "$TIKTOK_IPA_URL" || -z "$TIKTOK_IPA_SHA256" ]]; then
+if [[ -z "${TIKTOK_IPA_URL:-}" || -z "${TIKTOK_IPA_SHA256:-}" ]]; then
     echo "Error: Missing required environment variables."
     echo "Please configure the following GitHub secrets:"
     echo "  - TIKTOK_IPA_URL"
@@ -33,8 +31,12 @@ fi
 EXPECTED_VERSION="46.6.0"
 
 TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"' EXIT
+
 BASE_IPA="$TMP_DIR/base.ipa"
-OUT_IPA="TikTok_${EXPECTED_VERSION}_ChronoKit.ipa"
+# We should include ChronoKit version in the output IPA name
+CHRONOKIT_VERSION=$(dpkg-deb -I "$TWEAK_DEB" | awk '/^[ \t]*Version:/ {print $2}' | tr -d '\r')
+OUT_IPA="TikTok_${EXPECTED_VERSION}_ChronoKit_${CHRONOKIT_VERSION}.ipa"
 
 echo "Downloading decrypted TikTok IPA..."
 curl -sL "$TIKTOK_IPA_URL" -o "$BASE_IPA"
@@ -57,7 +59,7 @@ if [[ ! -f "$INFO_PLIST" ]]; then
     exit 1
 fi
 
-# Need to extract CFBundleShortVersionString
+# Extract CFBundleShortVersionString
 PLIST_BUDDY="/usr/libexec/PlistBuddy"
 APP_VERSION=$($PLIST_BUDDY -c "Print CFBundleShortVersionString" "$INFO_PLIST")
 
@@ -66,6 +68,9 @@ if [[ "$APP_VERSION" != "$EXPECTED_VERSION" ]]; then
     exit 1
 fi
 echo "Verified TikTok version: $APP_VERSION"
+
+# Remove the extracted original IPA payload as it's no longer needed and takes space
+rm -rf "$TMP_DIR/extracted"
 
 echo "Setting up cyan..."
 export PIPX_BIN_DIR="$TMP_DIR/pipx_bin"
@@ -91,15 +96,19 @@ if [[ ! -f "$DYLIB_PATH" ]]; then
 fi
 
 echo "Checking embedded dependencies..."
-otool -L "$DYLIB_PATH"
+otool -L "$DYLIB_PATH" || true
 
 if otool -L "$DYLIB_PATH" | grep -q "/var/jb"; then
     echo "Error: Unresolved /var/jb dependency found in output IPA!"
     exit 1
 fi
 
+if otool -L "$DYLIB_PATH" | grep -q "Users/"; then
+    echo "Error: Unresolved developer path dependency found in output IPA!"
+    exit 1
+fi
+
 echo "Calculating final IPA SHA256..."
 sha256sum "$OUT_IPA"
 
-rm -rf "$TMP_DIR"
 echo "Successfully generated $OUT_IPA"

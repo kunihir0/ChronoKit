@@ -32,3 +32,4 @@ FridaGadget.config
 FridaGadget.dylib
 .env
 node_modules
+apt_repo/

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 REPO_DIR="apt_repo"
 DEBS_DIR="$REPO_DIR/debs"
@@ -34,18 +34,24 @@ EOF
 # Calculate hashes and sizes for the Release file
 echo "MD5Sum:" >> Release
 for file in Packages Packages.gz Packages.bz2; do
-    size=$(wc -c < "$file" | tr -d ' ')
-    md5sum "$file" | awk -v size="$size" '{printf " %s %s %s\n", $1, size, $2}' >> Release
+    if [[ -f "$file" ]]; then
+        size=$(wc -c < "$file" | tr -d ' ')
+        md5sum "$file" | awk -v size="$size" '{printf " %s %s %s\n", $1, size, $2}' >> Release
+    fi
 done
 echo "SHA1:" >> Release
 for file in Packages Packages.gz Packages.bz2; do
-    size=$(wc -c < "$file" | tr -d ' ')
-    sha1sum "$file" | awk -v size="$size" '{printf " %s %s %s\n", $1, size, $2}' >> Release
+    if [[ -f "$file" ]]; then
+        size=$(wc -c < "$file" | tr -d ' ')
+        sha1sum "$file" | awk -v size="$size" '{printf " %s %s %s\n", $1, size, $2}' >> Release
+    fi
 done
 echo "SHA256:" >> Release
 for file in Packages Packages.gz Packages.bz2; do
-    size=$(wc -c < "$file" | tr -d ' ')
-    sha256sum "$file" | awk -v size="$size" '{printf " %s %s %s\n", $1, size, $2}' >> Release
+    if [[ -f "$file" ]]; then
+        size=$(wc -c < "$file" | tr -d ' ')
+        sha256sum "$file" | awk -v size="$size" '{printf " %s %s %s\n", $1, size, $2}' >> Release
+    fi
 done
 
 echo "Creating index.html..."
