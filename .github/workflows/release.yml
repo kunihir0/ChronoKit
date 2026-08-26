@@ -7,112 +7,195 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publish release (false for dry-run)'
+        description: 'Publish release and deploy Pages'
         required: true
         type: boolean
         default: false
 
 permissions:
-  contents: write
-  pages: write
-  id-token: write
+  contents: read
 
 concurrency:
-  group: "release"
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   build_release:
-    name: Build & Publish Release
+    name: Build and validate release
     runs-on: macos-latest
-    environment:
-      name: github-pages
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           submodules: recursive
 
-      - name: Verify Tag Matches Control Version
+      - name: Verify release version
+        id: version
         run: |
           CONTROL_VERSION=$(awk '/^Version:/ {print $2}' control | tr -d '\r')
-          TAG_VERSION=${GITHUB_REF_NAME#v}
-          if [[ "${{ github.event_name }}" == "push" ]]; then
-            if [[ "$CONTROL_VERSION" != "$TAG_VERSION" ]]; then
-              echo "Error: Tag version ($TAG_VERSION) does not match control version ($CONTROL_VERSION)!"
+          if [[ ! "$CONTROL_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: control Version is not semantic version format."
+            exit 1
+          fi
+
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Error: release tag is not vX.Y.Z format."
+              exit 1
+            fi
+            if [[ "${GITHUB_REF_NAME#v}" != "$CONTROL_VERSION" ]]; then
+              echo "Error: tag does not match control Version."
               exit 1
             fi
           fi
-          echo "VERSION=$CONTROL_VERSION" >> $GITHUB_ENV
 
-      - name: Setup Theos (Rootless)
-        run: |
-          git clone --recursive https://github.com/theos/theos.git ~/theos
-          cd ~/theos && git checkout 5280bd038207e14f8bd76f5417aa2fe641c03228
-          brew install ldid xz dpkg
-          
-      - name: Setup SDKs
-        run: |
-          curl -LO https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz
-          tar -xf iPhoneOS16.5.sdk.tar.xz -C ~/theos/sdks
-          rm iPhoneOS16.5.sdk.tar.xz
+          echo "VERSION=$CONTROL_VERSION" >> "$GITHUB_ENV"
+          echo "version=$CONTROL_VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Build Rootless
+      - name: Install packaging tools
+        run: brew install ldid xz dpkg
+
+      - name: Setup pinned Rootless Theos and SDK
         run: |
-          export THEOS=~/theos
+          git clone --recursive https://github.com/theos/theos.git "$HOME/theos"
+          git -C "$HOME/theos" checkout 5280bd038207e14f8bd76f5417aa2fe641c03228
+          ./scripts/setup-sdk.sh "$HOME/theos"
+
+      - name: Build and validate Rootless package
+        run: |
+          rm -rf packages release-bundle apt_repo
+          mkdir -p release-bundle
+          export THEOS="$HOME/theos"
           ./scripts/build-package.sh rootless
-          ROOTLESS_DEB=$(find packages -name "*.deb" -type f ! -name "*debug*" | head -n 1)
+
+          shopt -s nullglob
+          packages_found=(packages/*_iphoneos-arm64.deb)
+          if [[ ${#packages_found[@]} -ne 1 ]]; then
+            echo "Error: expected exactly one Rootless production package, found ${#packages_found[@]}."
+            exit 1
+          fi
+          ROOTLESS_DEB="${packages_found[0]}"
           ./scripts/validate-package.sh "$ROOTLESS_DEB" rootless
-          cp "$ROOTLESS_DEB" "ChronoKit_${VERSION}_rootless_iphoneos-arm64.deb"
+          cp "$ROOTLESS_DEB" "release-bundle/ChronoKit_${VERSION}_rootless_iphoneos-arm64.deb"
 
-      - name: Build RootHide
+      - name: Setup pinned RootHide Theos and SDK
         run: |
-          rm -rf ~/theos
-          git clone --recursive https://github.com/roothide/theos.git ~/theos
-          cd ~/theos && git checkout 88506b2c22e9e07dd4ed055f23c9e398a117a2c7
-          brew install ldid xz dpkg
-          curl -LO https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz
-          tar -xf iPhoneOS16.5.sdk.tar.xz -C ~/theos/sdks
-          rm iPhoneOS16.5.sdk.tar.xz
+          rm -rf "$HOME/theos"
+          git clone --recursive https://github.com/roothide/theos.git "$HOME/theos"
+          git -C "$HOME/theos" checkout 88506b2c22e9e07dd4ed055f23c9e398a117a2c7
+          ./scripts/setup-sdk.sh "$HOME/theos"
 
-          export THEOS=~/theos
+      - name: Build and validate RootHide package
+        run: |
+          rm -rf packages
+          export THEOS="$HOME/theos"
           ./scripts/build-package.sh roothide
-          ROOTHIDE_DEB=$(find packages -name "*.deb" -type f ! -name "*debug*" | head -n 1)
+
+          shopt -s nullglob
+          packages_found=(packages/*_iphoneos-arm64e.deb)
+          if [[ ${#packages_found[@]} -ne 1 ]]; then
+            echo "Error: expected exactly one RootHide production package, found ${#packages_found[@]}."
+            exit 1
+          fi
+          ROOTHIDE_DEB="${packages_found[0]}"
           ./scripts/validate-package.sh "$ROOTHIDE_DEB" roothide
-          cp "$ROOTHIDE_DEB" "ChronoKit_${VERSION}_roothide_iphoneos-arm64e.deb"
+          cp "$ROOTHIDE_DEB" "release-bundle/ChronoKit_${VERSION}_roothide_iphoneos-arm64e.deb"
 
-      - name: Generate SHA256SUMS
+      - name: Generate release checksums and APT repository
         run: |
-          sha256sum ChronoKit_${VERSION}_rootless_iphoneos-arm64.deb > SHA256SUMS
-          sha256sum ChronoKit_${VERSION}_roothide_iphoneos-arm64e.deb >> SHA256SUMS
-          cat SHA256SUMS
+          (
+            cd release-bundle
+            shasum -a 256 \
+              "ChronoKit_${VERSION}_rootless_iphoneos-arm64.deb" \
+              "ChronoKit_${VERSION}_roothide_iphoneos-arm64e.deb" \
+              > SHA256SUMS
+          )
+          ./scripts/build-apt-repo.sh release-bundle
 
-      - name: Build APT Repository
+      - name: Upload release bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-bundle
+          path: release-bundle/
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Upload APT repository
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: apt-repository
+          path: apt_repo/
+          if-no-files-found: error
+          retention-days: 3
+
+  publish:
+    name: Publish release and deploy Pages
+    needs: build_release
+    if: github.event_name == 'push' || inputs.publish == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Validate publication ref
+        env:
+          VERSION: ${{ needs.build_release.outputs.version }}
         run: |
-          ./scripts/build-apt-repo.sh
+          if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then
+            echo "Error: publication requires a tag ref."
+            exit 1
+          fi
+          if [[ "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
+            echo "Error: publication tag does not match control Version."
+            exit 1
+          fi
 
-      - name: Setup Pages
-        if: github.event_name == 'push' || inputs.publish == true
+      - name: Download release bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-bundle
+          path: release-bundle/
+
+      - name: Download APT repository
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: apt-repository
+          path: apt_repo/
+
+      - name: Configure Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
 
-      - name: Upload Pages Artifact
-        if: github.event_name == 'push' || inputs.publish == true
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
-          path: 'apt_repo'
+          path: apt_repo/
 
-      - name: Deploy to GitHub Pages
+      - name: Deploy Pages
         id: deployment
-        if: github.event_name == 'push' || inputs.publish == true
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
 
-      - name: Publish GitHub Release
-        if: github.event_name == 'push' || inputs.publish == true
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
-        with:
-          files: |
-            ChronoKit_${{ env.VERSION }}_rootless_iphoneos-arm64.deb
-            ChronoKit_${{ env.VERSION }}_roothide_iphoneos-arm64e.deb
-            SHA256SUMS
-          name: ChronoKit v${{ env.VERSION }}
-          generate_release_notes: true
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.build_release.outputs.version }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" \
+              --verify-tag \
+              --title "ChronoKit v$VERSION" \
+              --generate-notes
+          fi
+          gh release upload "$GITHUB_REF_NAME" \
+            "release-bundle/ChronoKit_${VERSION}_rootless_iphoneos-arm64.deb" \
+            "release-bundle/ChronoKit_${VERSION}_roothide_iphoneos-arm64e.deb" \
+            release-bundle/SHA256SUMS \
+            --clobber

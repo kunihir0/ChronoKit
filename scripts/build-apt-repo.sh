@@ -1,16 +1,34 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+PACKAGE_DIR="${1:-packages}"
 REPO_DIR="apt_repo"
 DEBS_DIR="$REPO_DIR/debs"
 
-echo "Building APT repository in $REPO_DIR..."
+if [[ ! -d "$PACKAGE_DIR" ]]; then
+    echo "Error: package directory not found: $PACKAGE_DIR"
+    exit 1
+fi
 
+shopt -s nullglob
+packages=("$PACKAGE_DIR"/*.deb)
+if [[ ${#packages[@]} -eq 0 ]]; then
+    echo "Error: no Debian packages found in $PACKAGE_DIR"
+    exit 1
+fi
+
+echo "Building APT repository in $REPO_DIR..."
 rm -rf "$REPO_DIR"
 mkdir -p "$DEBS_DIR"
 
-# Copy validated release packages
-find packages -name "*.deb" -type f ! -name "*debug*" -exec cp {} "$DEBS_DIR/" \;
+for package in "${packages[@]}"; do
+    package_version=$(dpkg-deb -f "$package" Version)
+    if [[ "$package_version" == *debug* ]]; then
+        echo "Error: debug package cannot enter the APT repository: $package"
+        exit 1
+    fi
+    cp "$package" "$DEBS_DIR/"
+done
 
 cd "$REPO_DIR"
 
@@ -20,7 +38,7 @@ bzip2 -k -f Packages
 gzip -k -f Packages
 
 echo "Generating Release file..."
-cat <<EOF > Release
+cat <<'EOF' > Release
 Origin: ChronoKit
 Label: ChronoKit
 Suite: stable
@@ -31,31 +49,29 @@ Components: main
 Description: ChronoKit package repository
 EOF
 
-# Calculate hashes and sizes for the Release file
-echo "MD5Sum:" >> Release
-for file in Packages Packages.gz Packages.bz2; do
-    if [[ -f "$file" ]]; then
+append_checksums() {
+    local heading="$1"
+    local algorithm="$2"
+    local file size digest
+
+    echo "$heading:" >> Release
+    for file in Packages Packages.gz Packages.bz2; do
         size=$(wc -c < "$file" | tr -d ' ')
-        md5sum "$file" | awk -v size="$size" '{printf " %s %s %s\n", $1, size, $2}' >> Release
-    fi
-done
-echo "SHA1:" >> Release
-for file in Packages Packages.gz Packages.bz2; do
-    if [[ -f "$file" ]]; then
-        size=$(wc -c < "$file" | tr -d ' ')
-        sha1sum "$file" | awk -v size="$size" '{printf " %s %s %s\n", $1, size, $2}' >> Release
-    fi
-done
-echo "SHA256:" >> Release
-for file in Packages Packages.gz Packages.bz2; do
-    if [[ -f "$file" ]]; then
-        size=$(wc -c < "$file" | tr -d ' ')
-        sha256sum "$file" | awk -v size="$size" '{printf " %s %s %s\n", $1, size, $2}' >> Release
-    fi
-done
+        case "$algorithm" in
+            md5) digest=$(md5 -q "$file") ;;
+            sha1) digest=$(shasum -a 1 "$file" | awk '{print $1}') ;;
+            sha256) digest=$(shasum -a 256 "$file" | awk '{print $1}') ;;
+        esac
+        printf ' %s %s %s\n' "$digest" "$size" "$file" >> Release
+    done
+}
+
+append_checksums MD5Sum md5
+append_checksums SHA1 sha1
+append_checksums SHA256 sha256
 
 echo "Creating index.html..."
-cat <<EOF > index.html
+cat <<'EOF' > index.html
 <!DOCTYPE html>
 <html>
 <head>
@@ -68,5 +84,4 @@ cat <<EOF > index.html
 </html>
 EOF
 
-cd ..
 echo "APT repository built successfully."
