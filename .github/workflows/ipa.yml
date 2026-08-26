@@ -1,0 +1,120 @@
+name: Inject IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      chronokit_version:
+        description: 'ChronoKit version/tag to inject (for example 0.0.10 or v0.0.10)'
+        required: true
+        type: string
+      publish_ipa:
+        description: 'Publish the final IPA to the selected GitHub Release'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  inject:
+    name: Inject and validate IPA
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+
+      - name: Install injection tools
+        run: brew install dpkg pipx
+
+      - name: Fetch and validate exact release package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.chronokit_version }}
+        run: |
+          if [[ ! "$INPUT_VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: ChronoKit version must be X.Y.Z or vX.Y.Z."
+            exit 1
+          fi
+          VERSION="${INPUT_VERSION#v}"
+          TAG="v$VERSION"
+          mkdir -p dl
+          gh release download "$TAG" \
+            --pattern "ChronoKit_${VERSION}_rootless_iphoneos-arm64.deb" \
+            --dir dl
+
+          shopt -s nullglob
+          packages_found=(dl/ChronoKit_"${VERSION}"_rootless_iphoneos-arm64.deb)
+          if [[ ${#packages_found[@]} -ne 1 ]]; then
+            echo "Error: expected exactly one ChronoKit Rootless release package."
+            exit 1
+          fi
+          DEB_FILE="${packages_found[0]}"
+          if [[ "$(dpkg-deb -f "$DEB_FILE" Package)" != "com.kunihir0.chronokit" ]]; then
+            echo "Error: release package identity is invalid."
+            exit 1
+          fi
+          if [[ "$(dpkg-deb -f "$DEB_FILE" Version)" != "$VERSION" ]]; then
+            echo "Error: release package version does not match selection."
+            exit 1
+          fi
+          if [[ "$(dpkg-deb -f "$DEB_FILE" Architecture)" != "iphoneos-arm64" ]]; then
+            echo "Error: injection requires the Rootless arm64 release package."
+            exit 1
+          fi
+          cp "$DEB_FILE" chronokit_inject.deb
+
+      - name: Inject and validate IPA
+        env:
+          TIKTOK_IPA_URL: ${{ secrets.TIKTOK_IPA_URL }}
+          TIKTOK_IPA_SHA256: ${{ secrets.TIKTOK_IPA_SHA256 }}
+        run: ./scripts/build-ipa.sh chronokit_inject.deb
+
+      - name: Upload final IPA artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: injected-ipa
+          path: TikTok_*_ChronoKit_*.ipa
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish final IPA
+    needs: inject
+    if: inputs.publish_ipa == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download final IPA artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: injected-ipa
+          path: dl/
+
+      - name: Publish IPA to selected release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          INPUT_VERSION: ${{ inputs.chronokit_version }}
+        run: |
+          if [[ ! "$INPUT_VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: ChronoKit version must be X.Y.Z or vX.Y.Z."
+            exit 1
+          fi
+          VERSION="${INPUT_VERSION#v}"
+          TAG="v$VERSION"
+          shopt -s nullglob
+          ipa_files=(dl/TikTok_*_ChronoKit_"${VERSION}".ipa)
+          if [[ ${#ipa_files[@]} -ne 1 ]]; then
+            echo "Error: expected exactly one final injected IPA."
+            exit 1
+          fi
+          gh release upload "$TAG" "${ipa_files[0]}" --clobber

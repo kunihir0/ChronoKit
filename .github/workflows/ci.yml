@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'ci/*'
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build & Validate (${{ matrix.scheme }})
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        scheme: [rootless, roothide]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+
+      - name: Install packaging tools
+        run: brew install ldid xz dpkg
+
+      - name: Setup Theos (Rootless)
+        if: matrix.scheme == 'rootless'
+        run: |
+          ./scripts/setup-theos.sh \
+            https://github.com/theos/theos.git \
+            5280bd038207e14f8bd76f5417aa2fe641c03228 \
+            "$HOME/theos"
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+
+      - name: Setup Theos (RootHide)
+        if: matrix.scheme == 'roothide'
+        run: |
+          ./scripts/setup-theos.sh \
+            https://github.com/roothide/theos.git \
+            88506b2c22e9e07dd4ed055f23c9e398a117a2c7 \
+            "$HOME/theos"
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+
+      - name: Setup verified SDK
+        run: ./scripts/setup-sdk.sh "$HOME/theos"
+
+      - name: Build Package
+        run: ./scripts/build-package.sh "${{ matrix.scheme }}"
+
+      - name: Validate Package
+        run: |
+          shopt -s nullglob
+          if [[ "${{ matrix.scheme }}" == "rootless" ]]; then
+            packages_found=(packages/*_iphoneos-arm64.deb)
+          else
+            packages_found=(packages/*_iphoneos-arm64e.deb)
+          fi
+          if [[ ${#packages_found[@]} -ne 1 ]]; then
+            echo "Error: expected exactly one production package, found ${#packages_found[@]}."
+            exit 1
+          fi
+          ./scripts/validate-package.sh "${packages_found[0]}" "${{ matrix.scheme }}"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: chronokit-${{ matrix.scheme }}
+          path: packages/*.deb
+          if-no-files-found: error
