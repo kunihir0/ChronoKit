@@ -52,9 +52,9 @@ jobs:
           
       - name: Setup SDKs
         run: |
-          curl -LO https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS15.4.sdk.tar.xz
-          tar -xf iPhoneOS15.4.sdk.tar.xz -C ~/theos/sdks
-          rm iPhoneOS15.4.sdk.tar.xz
+          curl -LO https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz
+          tar -xf iPhoneOS16.5.sdk.tar.xz -C ~/theos/sdks
+          rm iPhoneOS16.5.sdk.tar.xz
 
       - name: Build Rootless
         run: |
@@ -70,9 +70,9 @@ jobs:
           git clone --recursive https://github.com/roothide/theos.git ~/theos
           cd ~/theos && git checkout 88506b2c22e9e07dd4ed055f23c9e398a117a2c7
           brew install ldid xz
-          curl -LO https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS15.4.sdk.tar.xz
-          tar -xf iPhoneOS15.4.sdk.tar.xz -C ~/theos/sdks
-          rm iPhoneOS15.4.sdk.tar.xz
+          curl -LO https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz
+          tar -xf iPhoneOS16.5.sdk.tar.xz -C ~/theos/sdks
+          rm iPhoneOS16.5.sdk.tar.xz
 
           export THEOS=~/theos
           ./scripts/build-package.sh roothide
