@@ -1,0 +1,113 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish release (false for dry-run)'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "release"
+  cancel-in-progress: false
+
+jobs:
+  build_release:
+    name: Build & Publish Release
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Verify Tag Matches Control Version
+        run: |
+          CONTROL_VERSION=$(awk '/^Version:/ {print $2}' control)
+          TAG_VERSION=${GITHUB_REF_NAME#v}
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            if [[ "$CONTROL_VERSION" != "$TAG_VERSION" ]]; then
+              echo "Error: Tag version ($TAG_VERSION) does not match control version ($CONTROL_VERSION)!"
+              exit 1
+            fi
+          fi
+          echo "VERSION=$CONTROL_VERSION" >> $GITHUB_ENV
+
+      - name: Setup Theos (Rootless)
+        run: |
+          bash -c "$(curl -fsSL https://raw.githubusercontent.com/theos/theos/master/bin/install-theos)"
+          
+      - name: Setup SDKs
+        run: |
+          curl -LO https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS15.4.sdk.tar.xz
+          tar -xf iPhoneOS15.4.sdk.tar.xz -C ~/theos/sdks
+          rm iPhoneOS15.4.sdk.tar.xz
+
+      - name: Build Rootless
+        run: |
+          export THEOS=~/theos
+          ./scripts/build-package.sh rootless
+          ROOTLESS_DEB=$(find packages -name "*.deb" -type f ! -name "*debug*" | head -n 1)
+          ./scripts/validate-package.sh "$ROOTLESS_DEB" rootless
+          cp "$ROOTLESS_DEB" "ChronoKit_${VERSION}_rootless_iphoneos-arm64.deb"
+
+      - name: Build RootHide
+        run: |
+          rm -rf ~/theos
+          git clone --recursive https://github.com/roothide/theos.git ~/theos
+          brew install ldid xz
+          curl -LO https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS15.4.sdk.tar.xz
+          tar -xf iPhoneOS15.4.sdk.tar.xz -C ~/theos/sdks
+          rm iPhoneOS15.4.sdk.tar.xz
+
+          export THEOS=~/theos
+          ./scripts/build-package.sh roothide
+          ROOTHIDE_DEB=$(find packages -name "*.deb" -type f ! -name "*debug*" | head -n 1)
+          ./scripts/validate-package.sh "$ROOTHIDE_DEB" roothide
+          cp "$ROOTHIDE_DEB" "ChronoKit_${VERSION}_roothide_iphoneos-arm64e.deb"
+
+      - name: Generate SHA256SUMS
+        run: |
+          sha256sum ChronoKit_${VERSION}_rootless_iphoneos-arm64.deb > SHA256SUMS
+          sha256sum ChronoKit_${VERSION}_roothide_iphoneos-arm64e.deb >> SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Build APT Repository
+        run: |
+          ./scripts/build-apt-repo.sh
+
+      - name: Setup Pages
+        if: github.event_name == 'push' || inputs.publish == true
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages Artifact
+        if: github.event_name == 'push' || inputs.publish == true
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'apt_repo'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        if: github.event_name == 'push' || inputs.publish == true
+        uses: actions/deploy-pages@v4
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push' || inputs.publish == true
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ChronoKit_${{ env.VERSION }}_rootless_iphoneos-arm64.deb
+            ChronoKit_${{ env.VERSION }}_roothide_iphoneos-arm64e.deb
+            SHA256SUMS
+          name: ChronoKit v${{ env.VERSION }}
+          generate_release_notes: true

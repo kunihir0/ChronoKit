@@ -1,0 +1,92 @@
+name: Inject IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      chronokit_version:
+        description: 'ChronoKit version/tag to inject (e.g., 0.0.10 or v0.0.10)'
+        required: true
+        type: string
+      publish_ipa:
+        description: 'Publish IPA to GitHub Release (Use with extreme caution)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  inject:
+    name: Inject IPA
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: Setup python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install pipx and dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip zip
+          python -m pip install --upgrade pip
+          pip install pipx
+
+      - name: Fetch Release Package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ inputs.chronokit_version }}"
+          if [[ ! "$VERSION" == v* ]]; then
+            TAG="v$VERSION"
+          else
+            TAG="$VERSION"
+          fi
+          
+          echo "Fetching release $TAG..."
+          gh release download "$TAG" --pattern "*rootless*.deb" -D dl
+          DEB_FILE=$(ls dl/*rootless*.deb | head -n 1)
+          
+          if [[ -z "$DEB_FILE" ]]; then
+            echo "Error: Could not find rootless package for release $TAG"
+            exit 1
+          fi
+          
+          cp "$DEB_FILE" "chronokit_inject.deb"
+          echo "Downloaded tweak package successfully."
+
+      - name: Run Injection Script
+        env:
+          TIKTOK_IPA_URL: ${{ secrets.TIKTOK_IPA_URL }}
+          TIKTOK_IPA_SHA256: ${{ secrets.TIKTOK_IPA_SHA256 }}
+        run: |
+          ./scripts/build-ipa.sh "chronokit_inject.deb"
+
+      - name: Upload IPA Artifact (Draft)
+        if: inputs.publish_ipa == false
+        uses: actions/upload-artifact@v4
+        with:
+          name: Injected_IPA
+          path: TikTok_*_ChronoKit.ipa
+          retention-days: 1
+          
+      - name: Publish IPA to Release
+        if: inputs.publish_ipa == true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ inputs.chronokit_version }}"
+          if [[ ! "$VERSION" == v* ]]; then
+            TAG="v$VERSION"
+          else
+            TAG="$VERSION"
+          fi
+          
+          IPA_FILE=$(ls TikTok_*_ChronoKit.ipa | head -n 1)
+          echo "Uploading $IPA_FILE to release $TAG..."
+          gh release upload "$TAG" "$IPA_FILE" --clobber
+          echo "Uploaded successfully."
